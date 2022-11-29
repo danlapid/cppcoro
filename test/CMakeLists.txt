@@ -46,6 +46,12 @@ if(WIN32)
         socket_tests.cpp
     )
 else()
+	if(CMAKE_SYSTEM_NAME MATCHES "Linux")
+		list(APPEND tests
+			scheduling_operator_tests.cpp
+			io_service_tests.cpp
+		)
+	endif()
 	# let more time for some tests
 	set(async_auto_reset_event_tests_TIMEOUT 60)
 endif()
