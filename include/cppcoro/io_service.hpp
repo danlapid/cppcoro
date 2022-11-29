@@ -11,6 +11,8 @@
 
 #if CPPCORO_OS_WINNT
 # include <cppcoro/detail/win32.hpp>
+#elif CPPCORO_OS_LINUX
+# include <cppcoro/detail/linux.hpp>
 #endif
 
 #include <optional>
@@ -172,6 +174,9 @@ namespace cppcoro
 
 		std::atomic<bool> m_winsockInitialised;
 		std::mutex m_winsockInitialisationMutex;
+
+#elif CPPCORO_OS_LINUX
+ 		detail::linux::message_queue m_mq;
 #endif
 
 		// Head of a linked-list of schedule operations that are
