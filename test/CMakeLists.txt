@@ -50,6 +50,8 @@ else()
 		list(APPEND tests
 			scheduling_operator_tests.cpp
 			io_service_tests.cpp
+			file_tests.cpp
+			# socket_tests.cpp
 		)
 	endif()
 	# let more time for some tests

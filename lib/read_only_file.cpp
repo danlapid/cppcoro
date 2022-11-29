@@ -33,4 +33,28 @@ cppcoro::read_only_file::read_only_file(
 {
 }
 
+#elif CPPCORO_OS_LINUX
+#include <fcntl.h>
+
+cppcoro::read_only_file cppcoro::read_only_file::open(
+	io_service& ioService,
+	const std::filesystem::path& path,
+	file_share_mode shareMode,
+	file_buffering_mode bufferingMode)
+{
+	return read_only_file(file::open(
+		O_RDONLY,
+		ioService,
+		path,
+		file_open_mode::open_existing,
+		shareMode,
+		bufferingMode));
+}
+
+cppcoro::read_only_file::read_only_file(
+	detail::linux::safe_file_data&& fileData) noexcept
+	: file(std::move(fileData))
+	, readable_file(detail::linux::safe_file_data{})
+{
+}
 #endif

@@ -27,22 +27,47 @@ namespace cppcoro
 				m_epollfd = safe_fd{create_epoll_fd()};
 				m_ev.data.fd = m_pipefd[0];
 				m_ev.events = EPOLLIN;
-
-				if(epoll_ctl(m_epollfd.fd(), EPOLL_CTL_ADD, m_pipefd[0], &m_ev) == -1)
-				{
-					throw std::system_error
-					{
-						static_cast<int>(errno),
-						std::system_category(),
-						"Error creating io_service: epoll ctl pipe"
-					};
-				}
+				add_fd_watch(m_pipefd[0], reinterpret_cast<void*>(m_pipefd[0]), EPOLLIN);
 			}
 
 			message_queue::~message_queue()
 			{
 				assert(close(m_pipefd[0]) == 0);
 				assert(close(m_pipefd[1]) == 0);
+			}
+
+			void message_queue::add_fd_watch(int fd, void* cb, uint32_t events){
+				struct epoll_event ev = {0};
+				ev.data.ptr = cb;
+				ev.events = events;
+				if(epoll_ctl(m_epollfd.fd(), EPOLL_CTL_ADD, fd, &ev) == -1)
+				{
+					if (errno == EPERM) {
+						// epoll returns EPERM on regular files because they are
+						// always ready for read/write, we can just queue the callback to run
+						enqueue_message(cb, CALLBACK_TYPE);
+					} else {
+						throw std::system_error
+						{
+							static_cast<int>(errno),
+							std::system_category(),
+							"message_queue: add_fd_watch failed"
+						};
+					}
+				}
+			}
+			void message_queue::remove_fd_watch(int fd){
+				if(epoll_ctl(m_epollfd.fd(), EPOLL_CTL_DEL, fd, NULL) == -1)
+				{
+					if (errno != EPERM) {
+						throw std::system_error
+						{
+							static_cast<int>(errno),
+							std::system_category(),
+							"message_queue: remove_fd_watch failed"
+						};
+					}
+				}
 			}
 
 			bool message_queue::enqueue_message(void* msg, message_type type)
@@ -87,25 +112,31 @@ namespace cppcoro
 					};
 				}
 
-				message qmsg;
-				ssize_t status = read(m_pipefd[0], (char*)&qmsg, sizeof(message));
+				if (ev.data.fd == m_pipefd[0]) {
+					message qmsg;
+					ssize_t status = read(m_pipefd[0], (char*)&qmsg, sizeof(message));
 
-				if(status == -1)
-				{
-					if (errno == EINTR || errno == EAGAIN) {
-						return false;
-					}
-					throw std::system_error
+					if(status == -1)
 					{
-						static_cast<int>(errno),
-						std::system_category(),
-						"Error retrieving message from message queue: mq_receive"
-					};
-				}
+						if (errno == EINTR || errno == EAGAIN) {
+							return false;
+						}
+						throw std::system_error
+						{
+							static_cast<int>(errno),
+							std::system_category(),
+							"Error retrieving message from message queue: mq_receive"
+						};
+					}
 
-				msg = qmsg.m_ptr;
-				type = qmsg.m_type;
-				return true;
+					msg = qmsg.m_ptr;
+					type = qmsg.m_type;
+					return true;
+				} else {
+					msg = ev.data.ptr;
+					type = CALLBACK_TYPE;
+					return true;
+				}
 			}
 
 			safe_fd create_event_fd()
