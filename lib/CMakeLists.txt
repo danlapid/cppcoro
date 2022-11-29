@@ -152,6 +152,17 @@ if(WIN32)
       # TODO remove this when experimental/non-experimental include are fixed
       list(APPEND compile_definition _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING=1)
     endif()
+elseif(UNIX)
+    set(linuxDetailIncludes
+        linux.hpp
+    )
+    list(TRANSFORM linuxDetailIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/detail/")
+    list(APPEND detailIncludes ${linuxDetailIncludes})
+
+    list(APPEND sources
+        linux.cpp
+        io_service.cpp
+    )
 endif()
 
 add_library(cppcoro
