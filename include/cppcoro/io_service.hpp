@@ -137,6 +137,8 @@ namespace cppcoro
 #if CPPCORO_OS_WINNT
 		detail::win32::handle_t native_iocp_handle() noexcept;
 		void ensure_winsock_initialised();
+#elif CPPCORO_OS_LINUX
+		detail::linux::message_queue* get_mq() noexcept;
 #endif
 
 	private:

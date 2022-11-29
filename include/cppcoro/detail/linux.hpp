@@ -87,6 +87,9 @@ namespace cppcoro
 			{
 				using callback_type = void(io_state* state);
 				callback_type* m_callback;
+				io_state(callback_type* callback) noexcept
+					: m_callback(callback)
+				{}
 			};
 
 			class message_queue
@@ -99,6 +102,8 @@ namespace cppcoro
 			public:
 				message_queue();
 				~message_queue();
+				void add_fd_watch(int fd, void* cb, uint32_t events);
+				void remove_fd_watch(int fd);
 				bool enqueue_message(void* message, message_type type);
 				bool dequeue_message(void*& message, message_type& type, bool wait);
 			};
@@ -106,6 +111,12 @@ namespace cppcoro
 			safe_fd create_event_fd();
 			safe_fd create_timer_fd();
 			safe_fd create_epoll_fd();
+
+ 			struct safe_file_data
+ 			{
+ 				safe_fd fd;
+ 				message_queue* mq;
+ 			};
 		}  // namespace linux
 	}      // namespace detail
 }  // namespace cppcoro

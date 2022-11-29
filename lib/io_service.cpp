@@ -512,7 +512,12 @@ void cppcoro::io_service::ensure_winsock_initialised()
 	}
 }
 
-#endif // CPPCORO_OS_WINNT
+#elif CPPCORO_OS_LINUX
+cppcoro::detail::linux::message_queue* cppcoro::io_service::get_mq() noexcept
+{
+	return &m_mq;
+}
+#endif
 
 void cppcoro::io_service::schedule_impl(schedule_operation* operation) noexcept
 {
@@ -876,13 +881,13 @@ void cppcoro::io_service::timer_thread_state::run() noexcept
  		if (status == 0 || status == -1 || (status == 1 && ev.data.fd == m_wakeupfd.fd()))
  		{
  			uint64_t count;
- 			read(m_wakeupfd.fd(), &count, sizeof(uint64_t));
+ 			(void)read(m_wakeupfd.fd(), &count, sizeof(uint64_t));
  			waitEvent = true;
  		}
  		else if (status == 1 && ev.data.fd == m_timerfd.fd())
  		{
  			uint64_t count;
- 			read(m_timerfd.fd(), &count, sizeof(uint64_t));
+ 			(void)read(m_timerfd.fd(), &count, sizeof(uint64_t));
  			timerEvent = true;
  		}
  #endif
