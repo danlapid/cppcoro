@@ -155,14 +155,33 @@ if(WIN32)
 elseif(UNIX)
     set(linuxDetailIncludes
         linux.hpp
+		linux_async_operation.hpp
     )
     list(TRANSFORM linuxDetailIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/detail/")
     list(APPEND detailIncludes ${linuxDetailIncludes})
 
-    list(APPEND sources
+    set(linuxSources
         linux.cpp
         io_service.cpp
+        file.cpp
+        readable_file.cpp
+        writable_file.cpp
+        read_only_file.cpp
+        write_only_file.cpp
+        read_write_file.cpp
+        file_read_operation.cpp
+        file_write_operation.cpp
+        # socket_helpers.cpp
+        # socket.cpp
+        # socket_accept_operation.cpp
+        # socket_connect_operation.cpp
+        # socket_disconnect_operation.cpp
+        # socket_send_operation.cpp
+        # socket_send_to_operation.cpp
+        # socket_recv_operation.cpp
+        # socket_recv_from_operation.cpp
     )
+    list(APPEND sources ${linuxSources})
 endif()
 
 add_library(cppcoro

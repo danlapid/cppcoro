@@ -510,8 +510,12 @@ void cppcoro::io_service::ensure_winsock_initialised()
 		}
 	}
 }
-
-#endif // CPPCORO_OS_WINNT
+#elif CPPCORO_OS_LINUX
+cppcoro::detail::linux::message_queue* cppcoro::io_service::get_mq() noexcept
+{
+	return &m_mq;
+}
+#endif
 
 void cppcoro::io_service::schedule_impl(schedule_operation* operation) noexcept
 {

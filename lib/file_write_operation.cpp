@@ -50,4 +50,24 @@ void cppcoro::file_write_operation_impl::cancel(
 	(void)::CancelIoEx(m_fileHandle, operation.get_overlapped());
 }
 
-#endif // CPPCORO_OS_WINNT
+#elif CPPCORO_OS_LINUX
+
+bool cppcoro::file_write_operation_impl::try_start(
+	cppcoro::detail::linux_async_operation_base& operation) noexcept
+{
+	lseek(m_fd, m_offset, SEEK_SET); // TODO: add err check!
+	operation.m_completeFunc = [=]() {
+		int res = write(m_fd, m_buffer, m_byteCount); // TODO: maybe add checks
+		operation.m_mq->remove_fd_watch(m_fd);
+		return res;
+	};
+	operation.m_mq->add_fd_watch(m_fd, reinterpret_cast<void*>(&operation), EPOLLOUT);
+	return true;
+}
+
+void cppcoro::file_write_operation_impl::cancel(
+	cppcoro::detail::linux_async_operation_base& operation) noexcept
+{
+	operation.m_mq->remove_fd_watch(m_fd);
+}
+#endif
