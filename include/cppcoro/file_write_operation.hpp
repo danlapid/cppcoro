@@ -29,9 +29,11 @@ namespace cppcoro
 
 		file_write_operation_impl(
 			detail::win32::handle_t fileHandle,
+ 			std::uint64_t fileOffset,
 			const void* buffer,
 			std::size_t byteCount) noexcept
 			: m_fileHandle(fileHandle)
+			, m_offset(fileOffset)
 			, m_buffer(buffer)
 			, m_byteCount(byteCount)
 		{}
@@ -42,6 +44,7 @@ namespace cppcoro
 	private:
 
 		detail::win32::handle_t m_fileHandle;
+ 		std::uint64_t m_offset;
 		const void* m_buffer;
 		std::size_t m_byteCount;
 
@@ -57,8 +60,8 @@ namespace cppcoro
 			std::uint64_t fileOffset,
 			const void* buffer,
 			std::size_t byteCount) noexcept
-			: cppcoro::detail::win32_overlapped_operation<file_write_operation>(fileOffset)
-			, m_impl(fileHandle, buffer, byteCount)
+			: cppcoro::detail::win32_overlapped_operation<file_write_operation>()
+			, m_impl(fileHandle, fileOffset, buffer, byteCount)
 		{}
 
 	private:
@@ -82,8 +85,8 @@ namespace cppcoro
 			const void* buffer,
 			std::size_t byteCount,
 			cancellation_token&& ct) noexcept
-			: cppcoro::detail::win32_overlapped_operation_cancellable<file_write_operation_cancellable>(fileOffset, std::move(ct))
-			, m_impl(fileHandle, buffer, byteCount)
+			: cppcoro::detail::win32_overlapped_operation_cancellable<file_write_operation_cancellable>(std::move(ct))
+			, m_impl(fileHandle, fileOffset, buffer, byteCount)
 		{}
 
 	private:

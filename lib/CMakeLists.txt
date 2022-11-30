@@ -80,6 +80,18 @@ set(privateHeaders
 	spin_mutex.hpp
 )
 
+set(socketNetIncludes
+	socket.hpp
+	socket_accept_operation.hpp
+	socket_connect_operation.hpp
+	socket_disconnect_operation.hpp
+	socket_recv_operation.hpp
+	socket_recv_from_operation.hpp
+	socket_send_operation.hpp
+	socket_send_to_operation.hpp
+)
+list(TRANSFORM socketNetIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/net/")
+
 set(sources
 	async_auto_reset_event.cpp
 	async_manual_reset_event.cpp
@@ -101,6 +113,29 @@ set(sources
 	spin_mutex.cpp
 )
 
+set(fileSources
+	file.cpp
+	readable_file.cpp
+	writable_file.cpp
+	read_only_file.cpp
+	write_only_file.cpp
+	read_write_file.cpp
+	file_read_operation.cpp
+	file_write_operation.cpp
+)
+
+set(socketNetSources
+	socket_helpers.cpp
+	socket.cpp
+	socket_accept_operation.cpp
+	socket_connect_operation.cpp
+	socket_disconnect_operation.cpp
+	socket_send_operation.cpp
+	socket_send_to_operation.cpp
+	socket_recv_operation.cpp
+	socket_recv_from_operation.cpp
+)
+
 if(WIN32)
 	set(win32DetailIncludes
 		win32.hpp
@@ -108,42 +143,13 @@ if(WIN32)
 	)
     list(TRANSFORM win32DetailIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/detail/")
     list(APPEND detailIncludes ${win32DetailIncludes})
-
-    set(win32NetIncludes
-        socket.hpp
-        socket_accept_operation.hpp
-        socket_connect_operation.hpp
-        socket_disconnect_operation.hpp
-        socket_recv_operation.hpp
-        socket_recv_from_operation.hpp
-        socket_send_operation.hpp
-        socket_send_to_operation.hpp
-    )
-    list(TRANSFORM win32NetIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/net/")
-    list(APPEND netIncludes ${win32NetIncludes})
+	list(APPEND netIncludes ${socketNetIncludes})
 
     set(win32Sources
         win32.cpp
         io_service.cpp
-        file.cpp
-        readable_file.cpp
-        writable_file.cpp
-        read_only_file.cpp
-        write_only_file.cpp
-        read_write_file.cpp
-        file_read_operation.cpp
-        file_write_operation.cpp
-        socket_helpers.cpp
-        socket.cpp
-        socket_accept_operation.cpp
-        socket_connect_operation.cpp
-        socket_disconnect_operation.cpp
-        socket_send_operation.cpp
-        socket_send_to_operation.cpp
-        socket_recv_operation.cpp
-        socket_recv_from_operation.cpp
     )
-    list(APPEND sources ${win32Sources})
+    list(APPEND sources ${win32Sources} ${fileSources} ${socketNetSources})
 
     list(APPEND libraries Ws2_32 Mswsock Synchronization)
     list(APPEND compile_options /EHsc)
@@ -159,42 +165,13 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "Linux")
     )
     list(TRANSFORM linuxDetailIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/detail/")
     list(APPEND detailIncludes ${linuxDetailIncludes})
-
-    set(linuxNetIncludes
-        socket.hpp
-        socket_accept_operation.hpp
-        socket_connect_operation.hpp
-        socket_disconnect_operation.hpp
-        socket_recv_operation.hpp
-        socket_recv_from_operation.hpp
-        socket_send_operation.hpp
-        socket_send_to_operation.hpp
-    )
-    list(TRANSFORM linuxNetIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/net/")
-    list(APPEND netIncludes ${linuxNetIncludes})
+    list(APPEND netIncludes ${socketNetIncludes})
 
     set(linuxSources
         linux.cpp
         io_service.cpp
-        file.cpp
-        readable_file.cpp
-        writable_file.cpp
-        read_only_file.cpp
-        write_only_file.cpp
-        read_write_file.cpp
-        file_read_operation.cpp
-        file_write_operation.cpp
-        socket_helpers.cpp
-        socket.cpp
-        socket_accept_operation.cpp
-        socket_connect_operation.cpp
-        socket_disconnect_operation.cpp
-        socket_send_operation.cpp
-        socket_send_to_operation.cpp
-        socket_recv_operation.cpp
-        socket_recv_from_operation.cpp
     )
-    list(APPEND sources ${linuxSources})
+    list(APPEND sources ${linuxSources} ${fileSources} ${socketNetSources})
 endif()
 
 add_library(cppcoro

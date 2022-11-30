@@ -81,25 +81,13 @@ namespace cppcoro
 					win32::ulongptr_t completionKey);
 
 				io_state(callback_type* callback = nullptr) noexcept
-					: io_state(std::uint64_t(0), callback)
-				{}
-
-				io_state(void* pointer, callback_type* callback) noexcept
 					: m_callback(callback)
 				{
 					this->Internal = 0;
 					this->InternalHigh = 0;
-					this->Pointer = pointer;
-					this->hEvent = nullptr;
-				}
-
-				io_state(std::uint64_t offset, callback_type* callback) noexcept
-					: m_callback(callback)
-				{
-					this->Internal = 0;
-					this->InternalHigh = 0;
-					this->Offset = static_cast<dword_t>(offset);
-					this->OffsetHigh = static_cast<dword_t>(offset >> 32);
+					this->Offset = 0;
+					this->OffsetHigh = 0;
+					this->Pointer = nullptr;
 					this->hEvent = nullptr;
 				}
 

@@ -32,22 +32,6 @@ namespace cppcoro
 				, m_numberOfBytesTransferred(0)
 			{}
 
-			win32_overlapped_operation_base(
-				void* pointer,
-				detail::win32::io_state::callback_type* callback) noexcept
-				: detail::win32::io_state(pointer, callback)
-				, m_errorCode(0)
-				, m_numberOfBytesTransferred(0)
-			{}
-
-			win32_overlapped_operation_base(
-				std::uint64_t offset,
-				detail::win32::io_state::callback_type* callback) noexcept
-				: detail::win32::io_state(offset, callback)
-				, m_errorCode(0)
-				, m_numberOfBytesTransferred(0)
-			{}
-
 			_OVERLAPPED* get_overlapped() noexcept
 			{
 				return reinterpret_cast<_OVERLAPPED*>(
@@ -82,19 +66,6 @@ namespace cppcoro
 				: win32_overlapped_operation_base(
 					&win32_overlapped_operation::on_operation_completed)
 			{}
-
-			win32_overlapped_operation(void* pointer) noexcept
-				: win32_overlapped_operation_base(
-					pointer,
-					&win32_overlapped_operation::on_operation_completed)
-			{}
-
-			win32_overlapped_operation(std::uint64_t offset) noexcept
-				: win32_overlapped_operation_base(
-					offset,
-					&win32_overlapped_operation::on_operation_completed)
-			{}
-
 		public:
 
 			bool await_ready() const noexcept { return false; }
@@ -142,26 +113,6 @@ namespace cppcoro
 
 			win32_overlapped_operation_cancellable(cancellation_token&& ct) noexcept
 				: win32_overlapped_operation_base(&win32_overlapped_operation_cancellable::on_operation_completed)
-				, m_state(ct.is_cancellation_requested() ? state::completed : state::not_started)
-				, m_cancellationToken(std::move(ct))
-			{
-				m_errorCode = error_operation_aborted;
-			}
-
-			win32_overlapped_operation_cancellable(
-				void* pointer,
-				cancellation_token&& ct) noexcept
-				: win32_overlapped_operation_base(pointer, &win32_overlapped_operation_cancellable::on_operation_completed)
-				, m_state(ct.is_cancellation_requested() ? state::completed : state::not_started)
-				, m_cancellationToken(std::move(ct))
-			{
-				m_errorCode = error_operation_aborted;
-			}
-
-			win32_overlapped_operation_cancellable(
-				std::uint64_t offset,
-				cancellation_token&& ct) noexcept
-				: win32_overlapped_operation_base(offset, &win32_overlapped_operation_cancellable::on_operation_completed)
 				, m_state(ct.is_cancellation_requested() ? state::completed : state::not_started)
 				, m_cancellationToken(std::move(ct))
 			{

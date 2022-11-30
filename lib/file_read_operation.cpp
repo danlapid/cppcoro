@@ -18,6 +18,8 @@ bool cppcoro::file_read_operation_impl::try_start(
 		m_byteCount <= 0xFFFFFFFF ?
 		static_cast<DWORD>(m_byteCount) : DWORD(0xFFFFFFFF);
 
+	operation.get_overlapped()->Offset = static_cast<cppcoro::detail::win32::dword_t>(m_offset);
+	operation.get_overlapped()->OffsetHigh = static_cast<cppcoro::detail::win32::dword_t>(m_offset >> 32);
 	DWORD numberOfBytesRead = 0;
 	BOOL ok = ::ReadFile(
 		m_fileHandle,
