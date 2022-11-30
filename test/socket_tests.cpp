@@ -140,14 +140,14 @@ TEST_CASE("send/recv TCP/IPv4")
 
 		co_await connectingSocket.connect(listeningSocket.local_endpoint());
 
-		auto receive = [&]() -> task<int>
+		auto receive = [](socket sock) -> task<int>
 		{
 			std::uint8_t buffer[100];
 			std::uint64_t totalBytesReceived = 0;
 			std::size_t bytesReceived;
 			do
 			{
-				bytesReceived = co_await connectingSocket.recv(buffer, sizeof(buffer));
+				bytesReceived = co_await sock.recv(buffer, sizeof(buffer));
 				for (std::size_t i = 0; i < bytesReceived; ++i)
 				{
 					std::uint64_t byteIndex = totalBytesReceived + i;
@@ -163,7 +163,7 @@ TEST_CASE("send/recv TCP/IPv4")
 			co_return 0;
 		};
 
-		auto send = [&]() -> task<int>
+		auto send = [](socket sock) -> task<int>
 		{
 			std::uint8_t buffer[100];
 			for (std::uint64_t i = 0; i < 1000; i += sizeof(buffer))
@@ -176,16 +176,16 @@ TEST_CASE("send/recv TCP/IPv4")
 				std::size_t bytesSent = 0;
 				do
 				{
-					bytesSent += co_await connectingSocket.send(buffer + bytesSent, sizeof(buffer) - bytesSent);
+					bytesSent += co_await sock.send(buffer + bytesSent, sizeof(buffer) - bytesSent);
 				} while (bytesSent < sizeof(buffer));
 			}
 
-			connectingSocket.close_send();
+			sock.close_send();
 
 			co_return 0;
 		};
 
-		co_await when_all(send(), receive());
+		co_await when_all(send(connectingSocket), receive(connectingSocket));
 
 		co_await connectingSocket.disconnect();
 
@@ -283,14 +283,14 @@ TEST_CASE("send/recv TCP/IPv4 many connections")
 
 		co_await connectingSocket.connect(listeningSocket.local_endpoint());
 
-		auto receive = [&]() -> task<>
+		auto receive = [](socket sock) -> task<>
 		{
 			std::uint8_t buffer[100];
 			std::uint64_t totalBytesReceived = 0;
 			std::size_t bytesReceived;
 			do
 			{
-				bytesReceived = co_await connectingSocket.recv(buffer, sizeof(buffer));
+				bytesReceived = co_await sock.recv(buffer, sizeof(buffer));
 				for (std::size_t i = 0; i < bytesReceived; ++i)
 				{
 					std::uint64_t byteIndex = totalBytesReceived + i;
@@ -304,7 +304,7 @@ TEST_CASE("send/recv TCP/IPv4 many connections")
 			CHECK(totalBytesReceived == 1000);
 		};
 
-		auto send = [&]() -> task<>
+		auto send = [](socket sock) -> task<>
 		{
 			std::uint8_t buffer[100];
 			for (std::uint64_t i = 0; i < 1000; i += sizeof(buffer))
@@ -317,14 +317,14 @@ TEST_CASE("send/recv TCP/IPv4 many connections")
 				std::size_t bytesSent = 0;
 				do
 				{
-					bytesSent += co_await connectingSocket.send(buffer + bytesSent, sizeof(buffer) - bytesSent);
+					bytesSent += co_await sock.send(buffer + bytesSent, sizeof(buffer) - bytesSent);
 				} while (bytesSent < sizeof(buffer));
 			}
 
-			connectingSocket.close_send();
+			sock.close_send();
 		};
 
-		co_await when_all(send(), receive());
+		co_await when_all(send(connectingSocket), receive(connectingSocket));
 
 		co_await connectingSocket.disconnect();
 	};

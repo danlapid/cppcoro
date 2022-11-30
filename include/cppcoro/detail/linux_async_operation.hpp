@@ -86,6 +86,9 @@ namespace cppcoro
 			{
 				auto* operation = static_cast<linux_async_operation*>(ioState);
 				operation->m_res = operation->m_completeFunc();
+				if (operation->m_res < 0) {
+					operation->m_res = -errno;
+				}
 				operation->m_awaitingCoroutine.resume();
 			}
 
@@ -93,11 +96,11 @@ namespace cppcoro
 
 		};
 
+		static constexpr int error_operation_cancelled = ECANCELED;
 		template<typename OPERATION>
 		class linux_async_operation_cancellable
 			: protected linux_async_operation_base
 		{
-			static constexpr int error_operation_cancelled = ECANCELED;
 
 		protected:
 
@@ -278,6 +281,9 @@ namespace cppcoro
 				auto* operation = static_cast<linux_async_operation_cancellable*>(ioState);
 
 				operation->m_res = operation->m_completeFunc();
+				if (operation->m_res < 0) {
+					operation->m_res = -errno;
+				}
 
 				auto state = operation->m_state.load(std::memory_order_acquire);
 				if (state == state::started)
