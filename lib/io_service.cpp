@@ -482,12 +482,16 @@ void cppcoro::io_service::notify_work_finished() noexcept
 	}
 }
 
-#if CPPCORO_OS_WINNT
-cppcoro::detail::win32::handle_t cppcoro::io_service::native_iocp_handle() noexcept
+cppcoro::detail::io_context_t cppcoro::io_service::get_io_context() noexcept
 {
+#if CPPCORO_OS_WINNT
 	return m_iocpHandle.handle();
+#elif CPPCORO_OS_LINUX
+	return &m_mq;
+#endif
 }
 
+#if CPPCORO_OS_WINNT
 void cppcoro::io_service::ensure_winsock_initialised()
 {
 	if (!m_winsockInitialised.load(std::memory_order_acquire))
@@ -510,12 +514,6 @@ void cppcoro::io_service::ensure_winsock_initialised()
 			m_winsockInitialised.store(true, std::memory_order_release);
 		}
 	}
-}
-
-#elif CPPCORO_OS_LINUX
-cppcoro::detail::linux::message_queue* cppcoro::io_service::get_mq() noexcept
-{
-	return &m_mq;
 }
 #endif
 

@@ -125,7 +125,7 @@ namespace cppcoro
 						{
 							static_cast<int>(errno),
 							std::system_category(),
-							"Error retrieving message from message queue: mq_receive"
+							"Error retrieving message from message queue"
 						};
 					}
 

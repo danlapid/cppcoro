@@ -71,17 +71,17 @@ bool cppcoro::net::socket_send_operation_impl::try_start(
 {
 	operation.m_completeFunc = [=]() {
 		int res = send(m_socket.native_handle(), m_buffer, m_byteCount, 0);
-		operation.m_mq->remove_fd_watch(m_socket.native_handle());
+		operation.m_ctx->remove_fd_watch(m_socket.native_handle());
 		return res;
 	};
-	operation.m_mq->add_fd_watch(m_socket.native_handle(), reinterpret_cast<void*>(&operation), EPOLLOUT);
+	operation.m_ctx->add_fd_watch(m_socket.native_handle(), reinterpret_cast<void*>(&operation), EPOLLOUT);
 	return true;
 }
 
 void cppcoro::net::socket_send_operation_impl::cancel(
 	cppcoro::detail::linux_async_operation_base& operation) noexcept
 {
-	operation.m_mq->remove_fd_watch(m_socket.native_handle());
+	operation.m_ctx->remove_fd_watch(m_socket.native_handle());
 }
 
 #endif

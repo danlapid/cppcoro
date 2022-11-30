@@ -21,6 +21,7 @@
 # include <WS2tcpip.h>
 # include <MSWSock.h>
 # include <Windows.h>
+int get_error() {return ::WWSAGetLastError();}
 #elif CPPCORO_OS_LINUX
 # include <sys/socket.h>
 # include <netinet/in.h>
@@ -30,7 +31,11 @@
 #define closesocket close
 #define INVALID_SOCKET (-1)
 #define SOCKET_ERROR (-1)
+#define SD_SEND SHUT_WR
+#define SD_RECEIVE SHUT_RD
+int get_error() {return errno;}
 #endif
+
 namespace
 {
 	namespace local
@@ -56,7 +61,7 @@ namespace
 				int protocolCount = ::WSAEnumProtocolsW(protocols, infos, &bufferSize);
 				if (protocolCount == SOCKET_ERROR)
 				{
-					int errorCode = ::WSAGetLastError();
+					int errorCode = get_error();
 					if (errorCode == WSAENOBUFS)
 					{
 						DWORD requiredElementCount = bufferSize / sizeof(WSAPROTOCOL_INFOW);
@@ -66,7 +71,7 @@ namespace
 						protocolCount = ::WSAEnumProtocolsW(protocols, infos, &bufferSize);
 						if (protocolCount == SOCKET_ERROR)
 						{
-							errorCode = ::WSAGetLastError();
+							errorCode = get_error();
 						}
 					}
 
@@ -111,7 +116,7 @@ namespace
 				addressFamily, socketType, protocol, selectedProtocolInfo, 0, flags);
 			if (socketHandle == INVALID_SOCKET)
 			{
-				const int errorCode = ::WSAGetLastError();
+				const int errorCode = get_error();
 				throw std::system_error(
 					errorCode,
 					std::system_category(),
@@ -192,7 +197,7 @@ namespace
 					sizeof(value));
 				if (result == SOCKET_ERROR)
 				{
-					const int errorCode = ::WSAGetLastError();
+					const int errorCode = get_error();
 					throw std::system_error(
 						errorCode,
 						std::system_category(),
@@ -200,7 +205,7 @@ namespace
 				}
 			}
 
-			return cppcoro::net::socket(socketHandle, skipCompletionPortOnSuccess);
+			return cppcoro::net::socket(socketHandle, ioSvc.get_io_context(), skipCompletionPortOnSuccess);
 		}
 #elif CPPCORO_OS_LINUX
 		cppcoro::net::socket create_socket(
@@ -213,7 +218,7 @@ namespace
 			const int socketHandle = ::socket(addressFamily, socketType | SOCK_NONBLOCK, protocol);
 			if (socketHandle == INVALID_SOCKET)
 			{
-				const int errorCode = errno;
+				const int errorCode = get_error();
 				throw std::system_error(
 					errorCode,
 					std::system_category(),
@@ -242,7 +247,7 @@ namespace
 					sizeof(value));
 				if (result == SOCKET_ERROR)
 				{
-					const int errorCode = errno;
+					const int errorCode = get_error();
 					throw std::system_error(
 						errorCode,
 						std::system_category(),
@@ -250,7 +255,7 @@ namespace
 				}
 			}
 
-			return cppcoro::net::socket(socketHandle, ioSvc.get_mq());
+			return cppcoro::net::socket(socketHandle, ioSvc.get_io_context());
 		}
 #endif
 	}
@@ -312,9 +317,8 @@ cppcoro::net::socket::socket(socket&& other) noexcept
 	: m_handle(std::exchange(other.m_handle, INVALID_SOCKET))
 #if CPPCORO_OS_WINNT
 	, m_skipCompletionOnSuccess(other.m_skipCompletionOnSuccess)
-#elif CPPCORO_OS_LINUX
-	, m_mq(other.m_mq)
 #endif
+	, m_ctx(other.m_ctx)
 	, m_localEndPoint(std::move(other.m_localEndPoint))
 	, m_remoteEndPoint(std::move(other.m_remoteEndPoint))
 {}
@@ -331,34 +335,30 @@ cppcoro::net::socket::operator=(socket&& other) noexcept
 	m_handle = handle;
 #if CPPCORO_OS_WINNT
 	m_skipCompletionOnSuccess = other.m_skipCompletionOnSuccess;
-#elif CPPCORO_OS_LINUX
-	m_mq = other.m_mq;
 #endif
+	m_ctx = other.m_ctx;
 	m_localEndPoint = other.m_localEndPoint;
 	m_remoteEndPoint = other.m_remoteEndPoint;
 
 	return *this;
 }
 
+cppcoro::detail::socket_handle_t duplicate_socket(const cppcoro::detail::socket_handle_t& handle) {
 #if CPPCORO_OS_WINNT
-cppcoro::detail::win32::socket_t duplicate_socket(const cppcoro::detail::win32::socket_t& handle) {
 	WSAPROTOCOL_INFO wsa_pi;
     WSADuplicateSocket(handle, GetCurrentProcessId(), &wsa_pi);
     return WSASocket(wsa_pi.iAddressFamily, wsa_pi.iSocketType, wsa_pi.iProtocol, &wsa_pi, 0, 0);
-}
 #elif CPPCORO_OS_LINUX
-cppcoro::detail::linux::fd_t duplicate_socket(const cppcoro::detail::linux::fd_t& handle) {
 	return dup(handle);
-}
 #endif
+}
 
 cppcoro::net::socket::socket(const socket& other) noexcept
 	: m_handle(duplicate_socket(other.m_handle))
 #if CPPCORO_OS_WINNT
 	, m_skipCompletionOnSuccess(other.m_skipCompletionOnSuccess)
-#elif CPPCORO_OS_LINUX
-	, m_mq(other.m_mq)
 #endif
+	, m_ctx(other.m_ctx)
 	, m_localEndPoint(other.m_localEndPoint)
 	, m_remoteEndPoint(other.m_remoteEndPoint)
 {}
@@ -369,9 +369,8 @@ cppcoro::net::socket::operator=(const socket& other) noexcept
 	m_handle = duplicate_socket(other.m_handle);
 #if CPPCORO_OS_WINNT
 	m_skipCompletionOnSuccess = other.m_skipCompletionOnSuccess;
-#elif CPPCORO_OS_LINUX
-	m_mq = other.m_mq;
 #endif
+	m_ctx = other.m_ctx;
 	m_localEndPoint = other.m_localEndPoint;
 	m_remoteEndPoint = other.m_remoteEndPoint;
 
@@ -394,89 +393,6 @@ int cppcoro::net::socket::close()
 	return 0;
 }
 
-#if CPPCORO_OS_WINNT
-void cppcoro::net::socket::bind(const ip_endpoint& localEndPoint)
-{
-	SOCKADDR_STORAGE sockaddrStorage = { 0 };
-	SOCKADDR* sockaddr = reinterpret_cast<SOCKADDR*>(&sockaddrStorage);
-	const int addrLength =
-		detail::ip_endpoint_to_sockaddr(localEndPoint, std::ref(sockaddrStorage));
-
-	int result = ::bind(m_handle, sockaddr, addrLength);
-	if (result != 0)
-	{
-		// WSANOTINITIALISED: WSAStartup not called
-		// WSAENETDOWN: network subsystem failed
-		// WSAEACCES: access denied
-		// WSAEADDRINUSE: port in use
-		// WSAEADDRNOTAVAIL: address is not an address that can be bound to
-		// WSAEFAULT: invalid pointer passed to bind()
-		// WSAEINPROGRESS: a callback is in progress
-		// WSAEINVAL: socket already bound
-		// WSAENOBUFS: system failed to allocate memory
-		// WSAENOTSOCK: socket was not a valid socket.
-		int errorCode = ::WSAGetLastError();
-		throw std::system_error(
-			errorCode,
-			std::system_category(),
-			"Error binding to endpoint: bind()");
-	}
-
-	int sockaddrLen = sizeof(sockaddrStorage);
-	result = ::getsockname(m_handle, sockaddr, &sockaddrLen);
-	if (result == 0)
-	{
-		m_localEndPoint = cppcoro::net::detail::sockaddr_to_ip_endpoint(*sockaddr);
-	}
-	else
-	{
-		m_localEndPoint = localEndPoint;
-	}
-}
-
-void cppcoro::net::socket::listen()
-{
-	int result = ::listen(m_handle, SOMAXCONN);
-	if (result != 0)
-	{
-		int errorCode = ::WSAGetLastError();
-		throw std::system_error(
-			errorCode,
-			std::system_category(),
-			"Failed to start listening on bound endpoint: listen");
-	}
-}
-
-void cppcoro::net::socket::listen(std::uint32_t backlog)
-{
-	if (backlog > 0x7FFFFFFF)
-	{
-		backlog = 0x7FFFFFFF;
-	}
-
-	int result = ::listen(m_handle, (int)backlog);
-	if (result != 0)
-	{
-		// WSANOTINITIALISED: WSAStartup not called
-		// WSAENETDOWN: network subsystem failed
-		// WSAEADDRINUSE: port in use
-		// WSAEINPROGRESS: a callback is in progress
-		// WSAEINVAL: socket not yet bound
-		// WSAEISCONN: socket already connected
-		// WSAEMFILE: no more socket descriptors available
-		// WSAENOBUFS: system failed to allocate memory
-		// WSAENOTSOCK: socket was not a valid socket.
-		// WSAEOPNOTSUPP: The socket does not support listening
-
-		int errorCode = ::WSAGetLastError();
-		throw std::system_error(
-			errorCode,
-			std::system_category(),
-			"Failed to start listening on bound endpoint: listen");
-	}
-}
-#elif CPPCORO_OS_LINUX
-
 void cppcoro::net::socket::bind(const ip_endpoint& localEndPoint)
 {
 	sockaddr_storage sockaddrStorage = { 0 };
@@ -487,7 +403,7 @@ void cppcoro::net::socket::bind(const ip_endpoint& localEndPoint)
 	int result = ::bind(m_handle, sa, addrLength);
 	if (result != 0)
 	{
-		int errorCode = errno;
+		int errorCode = get_error();
 		throw std::system_error(
 			errorCode,
 			std::system_category(),
@@ -511,7 +427,7 @@ void cppcoro::net::socket::listen()
 	int result = ::listen(m_handle, SOMAXCONN);
 	if (result != 0)
 	{
-		int errorCode = errno;
+		int errorCode = get_error();
 		throw std::system_error(
 			errorCode,
 			std::system_category(),
@@ -529,162 +445,104 @@ void cppcoro::net::socket::listen(std::uint32_t backlog)
 	int result = ::listen(m_handle, (int)backlog);
 	if (result != 0)
 	{
-		int errorCode = errno;
+		int errorCode = get_error();
 		throw std::system_error(
 			errorCode,
 			std::system_category(),
 			"Failed to start listening on bound endpoint: listen");
 	}
 }
-#endif
 
 cppcoro::net::socket_accept_operation
 cppcoro::net::socket::accept(socket& acceptingSocket) noexcept
 {
-#if CPPCORO_OS_WINNT
-	return socket_accept_operation{ *this, acceptingSocket};
-#elif CPPCORO_OS_LINUX
-	return socket_accept_operation{ *this, acceptingSocket, m_mq};
-#endif
+	return socket_accept_operation{ *this, acceptingSocket, m_ctx};
 }
 
 cppcoro::net::socket_accept_operation_cancellable
 cppcoro::net::socket::accept(socket& acceptingSocket, cancellation_token ct) noexcept
 {
-#if CPPCORO_OS_WINNT
-	return socket_accept_operation_cancellable{ *this, acceptingSocket, std::move(ct) };
-#elif CPPCORO_OS_LINUX
-	return socket_accept_operation_cancellable{ *this, acceptingSocket, m_mq, std::move(ct) };
-#endif
+	return socket_accept_operation_cancellable{ *this, acceptingSocket, m_ctx, std::move(ct) };
 }
 
 cppcoro::net::socket_connect_operation
 cppcoro::net::socket::connect(const ip_endpoint& remoteEndPoint) noexcept
 {
-#if CPPCORO_OS_WINNT
-	return socket_connect_operation{ *this, remoteEndPoint };
-#elif CPPCORO_OS_LINUX
-	return socket_connect_operation{ *this, remoteEndPoint, m_mq };
-#endif
+	return socket_connect_operation{ *this, remoteEndPoint, m_ctx };
 }
 
 cppcoro::net::socket_connect_operation_cancellable
 cppcoro::net::socket::connect(const ip_endpoint& remoteEndPoint, cancellation_token ct) noexcept
 {
-#if CPPCORO_OS_WINNT
-	return socket_connect_operation_cancellable{ *this, remoteEndPoint, std::move(ct) };
-#elif CPPCORO_OS_LINUX
-	return socket_connect_operation_cancellable{ *this, remoteEndPoint, m_mq, std::move(ct) };
-#endif
+	return socket_connect_operation_cancellable{ *this, remoteEndPoint, m_ctx, std::move(ct) };
 }
 
 cppcoro::net::socket_disconnect_operation
 cppcoro::net::socket::disconnect() noexcept
 {
-#if CPPCORO_OS_WINNT
-	return socket_disconnect_operation(*this);
-#elif CPPCORO_OS_LINUX
-	return socket_disconnect_operation(*this, m_mq);
-#endif
+	return socket_disconnect_operation(*this, m_ctx);
 }
 
 cppcoro::net::socket_disconnect_operation_cancellable
 cppcoro::net::socket::disconnect(cancellation_token ct) noexcept
 {
-#if CPPCORO_OS_WINNT
-	return socket_disconnect_operation_cancellable{ *this, std::move(ct) };
-#elif CPPCORO_OS_LINUX
-	return socket_disconnect_operation_cancellable{ *this, m_mq, std::move(ct) };
-#endif
+	return socket_disconnect_operation_cancellable{ *this, m_ctx, std::move(ct) };
 }
 
 cppcoro::net::socket_send_operation
 cppcoro::net::socket::send(const void* buffer, std::size_t byteCount) noexcept
 {
-#if CPPCORO_OS_WINNT
-	return socket_send_operation{ *this, buffer, byteCount };
-#elif CPPCORO_OS_LINUX
-	return socket_send_operation{ *this, buffer, byteCount, m_mq };
-#endif
+	return socket_send_operation{ *this, buffer, byteCount, m_ctx };
 }
 
 cppcoro::net::socket_send_operation_cancellable
 cppcoro::net::socket::send(const void* buffer, std::size_t byteCount, cancellation_token ct) noexcept
 {
-#if CPPCORO_OS_WINNT
-	return socket_send_operation_cancellable{ *this, buffer, byteCount, std::move(ct) };
-#elif CPPCORO_OS_LINUX
-	return socket_send_operation_cancellable{ *this, buffer, byteCount, m_mq, std::move(ct) };
-#endif
+	return socket_send_operation_cancellable{ *this, buffer, byteCount, m_ctx, std::move(ct) };
 }
 
 cppcoro::net::socket_recv_operation
 cppcoro::net::socket::recv(void* buffer, std::size_t byteCount) noexcept
 {
-#if CPPCORO_OS_WINNT
-	return socket_recv_operation{ *this, buffer, byteCount };
-#elif CPPCORO_OS_LINUX
-	return socket_recv_operation{ *this, buffer, byteCount, m_mq };
-#endif
+	return socket_recv_operation{ *this, buffer, byteCount, m_ctx };
 }
 
 cppcoro::net::socket_recv_operation_cancellable
 cppcoro::net::socket::recv(void* buffer, std::size_t byteCount, cancellation_token ct) noexcept
 {
-#if CPPCORO_OS_WINNT
-	return socket_recv_operation_cancellable{ *this, buffer, byteCount, std::move(ct) };
-#elif CPPCORO_OS_LINUX
-	return socket_recv_operation_cancellable{ *this, buffer, byteCount, m_mq, std::move(ct) };
-#endif
+	return socket_recv_operation_cancellable{ *this, buffer, byteCount, m_ctx, std::move(ct) };
 }
 
 cppcoro::net::socket_recv_from_operation
 cppcoro::net::socket::recv_from(void* buffer, std::size_t byteCount) noexcept
 {
-#if CPPCORO_OS_WINNT
-	return socket_recv_from_operation{ *this, buffer, byteCount };
-#elif CPPCORO_OS_LINUX
-	return socket_recv_from_operation{ *this, buffer, byteCount, m_mq };
-#endif
+	return socket_recv_from_operation{ *this, buffer, byteCount, m_ctx };
 }
 
 cppcoro::net::socket_recv_from_operation_cancellable
 cppcoro::net::socket::recv_from(void* buffer, std::size_t byteCount, cancellation_token ct) noexcept
 {
-#if CPPCORO_OS_WINNT
-	return socket_recv_from_operation_cancellable{ *this, buffer, byteCount, std::move(ct) };
-#elif CPPCORO_OS_LINUX
-	return socket_recv_from_operation_cancellable{ *this, buffer, byteCount, m_mq, std::move(ct) };
-#endif
+	return socket_recv_from_operation_cancellable{ *this, buffer, byteCount, m_ctx, std::move(ct) };
 }
 
 cppcoro::net::socket_send_to_operation
 cppcoro::net::socket::send_to(const ip_endpoint& destination, const void* buffer, std::size_t byteCount) noexcept
 {
-#if CPPCORO_OS_WINNT
-	return socket_send_to_operation{ *this, destination, buffer, byteCount };
-#elif CPPCORO_OS_LINUX
-	return socket_send_to_operation{ *this, destination, buffer, byteCount, m_mq };
-#endif
+	return socket_send_to_operation{ *this, destination, buffer, byteCount, m_ctx };
 }
 
 cppcoro::net::socket_send_to_operation_cancellable
 cppcoro::net::socket::send_to(const ip_endpoint& destination, const void* buffer, std::size_t byteCount, cancellation_token ct) noexcept
 {
-#if CPPCORO_OS_WINNT
-	return socket_send_to_operation_cancellable{ *this, destination, buffer, byteCount, std::move(ct) };
-#elif CPPCORO_OS_LINUX
-	return socket_send_to_operation_cancellable{ *this, destination, buffer, byteCount, m_mq, std::move(ct) };
-#endif
+	return socket_send_to_operation_cancellable{ *this, destination, buffer, byteCount, m_ctx, std::move(ct) };
 }
 
-#if CPPCORO_OS_WINNT
 void cppcoro::net::socket::close_send()
 {
 	int result = ::shutdown(m_handle, SD_SEND);
 	if (result == SOCKET_ERROR)
 	{
-		int errorCode = ::WSAGetLastError();
+		int errorCode = get_error();
 		throw std::system_error(
 			errorCode,
 			std::system_category(),
@@ -697,7 +555,7 @@ void cppcoro::net::socket::close_recv()
 	int result = ::shutdown(m_handle, SD_RECEIVE);
 	if (result == SOCKET_ERROR)
 	{
-		int errorCode = ::WSAGetLastError();
+		int errorCode = get_error();
 		throw std::system_error(
 			errorCode,
 			std::system_category(),
@@ -706,45 +564,16 @@ void cppcoro::net::socket::close_recv()
 }
 
 cppcoro::net::socket::socket(
-	cppcoro::detail::win32::socket_t handle,
-	bool skipCompletionOnSuccess) noexcept
-	: m_handle(handle)
-	, m_skipCompletionOnSuccess(skipCompletionOnSuccess)
-{
-}
-#elif CPPCORO_OS_LINUX
-void cppcoro::net::socket::close_send()
-{
-	int result = ::shutdown(m_handle, SHUT_WR);
-	if (result == SOCKET_ERROR)
-	{
-		int errorCode = errno;
-		throw std::system_error(
-			errorCode,
-			std::system_category(),
-			"failed to close socket send stream: shutdown(SD_SEND)");
-	}
-}
-
-void cppcoro::net::socket::close_recv()
-{
-	int result = ::shutdown(m_handle, SHUT_RD);
-	if (result == SOCKET_ERROR)
-	{
-		int errorCode = errno;
-		throw std::system_error(
-			errorCode,
-			std::system_category(),
-			"failed to close socket receive stream: shutdown(SD_RECEIVE)");
-	}
-}
-
-cppcoro::net::socket::socket(
-	cppcoro::detail::linux::fd_t handle,
-	cppcoro::detail::linux::message_queue* mq) noexcept
-	: m_handle(handle)
-	, m_mq(mq)
-{
-}
-
+	cppcoro::detail::socket_handle_t handle,
+	cppcoro::detail::io_context_t ctx
+#if CPPCORO_OS_WINNT
+	, bool skipCompletionOnSuccess
 #endif
+	) noexcept
+	: m_handle(handle)
+	, m_ctx(ctx)
+#if CPPCORO_OS_WINNT
+	, m_skipCompletionOnSuccess(skipCompletionOnSuccess)
+#endif
+{
+}

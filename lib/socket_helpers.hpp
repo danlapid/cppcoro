@@ -8,11 +8,7 @@
 #include <functional>
 #include <cppcoro/config.hpp>
 
-#if CPPCORO_OS_WINNT
-# include <cppcoro/detail/win32.hpp>
-#elif CPPCORO_OS_LINUX
-# include <cppcoro/detail/linux.hpp>
-#endif
+#include <cppcoro/detail/platform.hpp>
 struct sockaddr;
 struct sockaddr_storage;
 

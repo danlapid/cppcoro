@@ -11,124 +11,49 @@
 
 #include <cstdint>
 
-#if CPPCORO_OS_WINNT
-# include <cppcoro/detail/win32.hpp>
-# include <cppcoro/detail/win32_overlapped_operation.hpp>
-#elif CPPCORO_OS_LINUX
-# include <cppcoro/detail/linux.hpp>
-# include <cppcoro/detail/linux_async_operation.hpp>
-#endif
+#include <cppcoro/detail/platform.hpp>
+
 
 namespace cppcoro::net
 {
+	class socket;
+
+	class socket_send_to_operation_impl
+	{
+	public:
+
+		socket_send_to_operation_impl(
+			socket& s,
+			const ip_endpoint& destination,
+			const void* buffer,
+			std::size_t byteCount) noexcept
+			: m_socket(s)
+			, m_destination(destination)
 #if CPPCORO_OS_WINNT
-	class socket;
-
-	class socket_send_to_operation_impl
-	{
-	public:
-
-		socket_send_to_operation_impl(
-			socket& s,
-			const ip_endpoint& destination,
-			const void* buffer,
-			std::size_t byteCount) noexcept
-			: m_socket(s)
-			, m_destination(destination)
 			, m_buffer(const_cast<void*>(buffer), byteCount)
-		{}
-
-		bool try_start(cppcoro::detail::win32_overlapped_operation_base& operation) noexcept;
-		void cancel(cppcoro::detail::win32_overlapped_operation_base& operation) noexcept;
-
-	private:
-
-		socket& m_socket;
-		ip_endpoint m_destination;
-		cppcoro::detail::win32::wsabuf m_buffer;
-
-	};
-
-	class socket_send_to_operation
-		: public cppcoro::detail::win32_overlapped_operation<socket_send_to_operation>
-	{
-	public:
-
-		socket_send_to_operation(
-			socket& s,
-			const ip_endpoint& destination,
-			const void* buffer,
-			std::size_t byteCount) noexcept
-			: m_impl(s, destination, buffer, byteCount)
-		{}
-
-	private:
-
-		friend class cppcoro::detail::win32_overlapped_operation<socket_send_to_operation>;
-
-		bool try_start() noexcept { return m_impl.try_start(*this); }
-
-		socket_send_to_operation_impl m_impl;
-
-	};
-
-	class socket_send_to_operation_cancellable
-		: public cppcoro::detail::win32_overlapped_operation_cancellable<socket_send_to_operation_cancellable>
-	{
-	public:
-
-		socket_send_to_operation_cancellable(
-			socket& s,
-			const ip_endpoint& destination,
-			const void* buffer,
-			std::size_t byteCount,
-			cancellation_token&& ct) noexcept
-			: cppcoro::detail::win32_overlapped_operation_cancellable<socket_send_to_operation_cancellable>(std::move(ct))
-			, m_impl(s, destination, buffer, byteCount)
-		{}
-
-	private:
-
-		friend class cppcoro::detail::win32_overlapped_operation_cancellable<socket_send_to_operation_cancellable>;
-
-		bool try_start() noexcept { return m_impl.try_start(*this); }
-		void cancel() noexcept { return m_impl.cancel(*this); }
-
-		socket_send_to_operation_impl m_impl;
-
-	};
 #elif CPPCORO_OS_LINUX
-	class socket;
-
-	class socket_send_to_operation_impl
-	{
-	public:
-
-		socket_send_to_operation_impl(
-			socket& s,
-			const ip_endpoint& destination,
-			const void* buffer,
-			std::size_t byteCount) noexcept
-			: m_socket(s)
-			, m_destination(destination)
 			, m_buffer(buffer)
 			, m_byteCount(byteCount)
+#endif
 		{}
 
-		bool try_start(cppcoro::detail::linux_async_operation_base& operation) noexcept;
-		void cancel(cppcoro::detail::linux_async_operation_base& operation) noexcept;
+		bool try_start(cppcoro::detail::async_operation_base& operation) noexcept;
+		void cancel(cppcoro::detail::async_operation_base& operation) noexcept;
 
 	private:
 
 		socket& m_socket;
 		ip_endpoint m_destination;
+#if CPPCORO_OS_WINNT
+		cppcoro::detail::win32::wsabuf m_buffer;
+#elif CPPCORO_OS_LINUX
  		const void* m_buffer;
  		std::size_t m_byteCount;
-
+#endif
 	};
 
 	class socket_send_to_operation
-		: public cppcoro::detail::linux_async_operation<socket_send_to_operation>
+		: public cppcoro::detail::async_operation<socket_send_to_operation>
 	{
 	public:
 
@@ -137,14 +62,14 @@ namespace cppcoro::net
 			const ip_endpoint& destination,
 			const void* buffer,
 			std::size_t byteCount,
-			cppcoro::detail::linux::message_queue* mq) noexcept
-			: cppcoro::detail::linux_async_operation<socket_send_to_operation>(mq)
+			cppcoro::detail::io_context_t ctx) noexcept
+			: cppcoro::detail::async_operation<socket_send_to_operation>(ctx)
 			, m_impl(s, destination, buffer, byteCount)
 		{}
 
 	private:
 
-		friend class cppcoro::detail::linux_async_operation<socket_send_to_operation>;
+		friend class cppcoro::detail::async_operation<socket_send_to_operation>;
 
 		bool try_start() noexcept { return m_impl.try_start(*this); }
 
@@ -153,7 +78,7 @@ namespace cppcoro::net
 	};
 
 	class socket_send_to_operation_cancellable
-		: public cppcoro::detail::linux_async_operation_cancellable<socket_send_to_operation_cancellable>
+		: public cppcoro::detail::async_operation_cancellable<socket_send_to_operation_cancellable>
 	{
 	public:
 
@@ -162,15 +87,15 @@ namespace cppcoro::net
 			const ip_endpoint& destination,
 			const void* buffer,
 			std::size_t byteCount,
-			cppcoro::detail::linux::message_queue* mq,
+			cppcoro::detail::io_context_t ctx,
 			cancellation_token&& ct) noexcept
-			: cppcoro::detail::linux_async_operation_cancellable<socket_send_to_operation_cancellable>(mq, std::move(ct))
+			: cppcoro::detail::async_operation_cancellable<socket_send_to_operation_cancellable>(ctx, std::move(ct))
 			, m_impl(s, destination, buffer, byteCount)
 		{}
 
 	private:
 
-		friend class cppcoro::detail::linux_async_operation_cancellable<socket_send_to_operation_cancellable>;
+		friend class cppcoro::detail::async_operation_cancellable<socket_send_to_operation_cancellable>;
 
 		bool try_start() noexcept { return m_impl.try_start(*this); }
 		void cancel() noexcept { return m_impl.cancel(*this); }
@@ -178,7 +103,6 @@ namespace cppcoro::net
 		socket_send_to_operation_impl m_impl;
 
 	};
-#endif
 }
 
 

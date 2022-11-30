@@ -26,8 +26,10 @@ namespace cppcoro
 		public:
 
 			win32_overlapped_operation_base(
-				detail::win32::io_state::callback_type* callback) noexcept
+				detail::win32::io_state::callback_type* callback,
+				detail::win32::handle_t ctx) noexcept
 				: detail::win32::io_state(callback)
+				, m_ctx(ctx)
 				, m_errorCode(0)
 				, m_numberOfBytesTransferred(0)
 			{}
@@ -51,6 +53,7 @@ namespace cppcoro
 				return m_numberOfBytesTransferred;
 			}
 
+ 			detail::win32::handle_t m_ctx;
 			detail::win32::dword_t m_errorCode;
 			detail::win32::dword_t m_numberOfBytesTransferred;
 
@@ -62,9 +65,9 @@ namespace cppcoro
 		{
 		protected:
 
-			win32_overlapped_operation() noexcept
+			win32_overlapped_operation(detail::win32::handle_t ctx) noexcept
 				: win32_overlapped_operation_base(
-					&win32_overlapped_operation::on_operation_completed)
+					&win32_overlapped_operation::on_operation_completed, ctx)
 			{}
 		public:
 
@@ -111,8 +114,11 @@ namespace cppcoro
 
 		protected:
 
-			win32_overlapped_operation_cancellable(cancellation_token&& ct) noexcept
-				: win32_overlapped_operation_base(&win32_overlapped_operation_cancellable::on_operation_completed)
+			win32_overlapped_operation_cancellable(
+				detail::win32::handle_t ctx,
+				cancellation_token&& ct) noexcept
+				: win32_overlapped_operation_base(
+					&win32_overlapped_operation_cancellable::on_operation_completed, ctx)
 				, m_state(ct.is_cancellation_requested() ? state::completed : state::not_started)
 				, m_cancellationToken(std::move(ct))
 			{

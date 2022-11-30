@@ -57,23 +57,23 @@ void cppcoro::file_read_operation_impl::cancel(
 bool cppcoro::file_read_operation_impl::try_start(
 	cppcoro::detail::linux_async_operation_base& operation) noexcept
 {
-	auto seek_res = lseek(m_fd, m_offset, SEEK_SET);
+	auto seek_res = lseek(m_fileHandle, m_offset, SEEK_SET);
 	if (seek_res < 0) {
 		operation.m_res = -errno;
 		return false;
 	}
 	operation.m_completeFunc = [=]() {
-		int res = read(m_fd, m_buffer, m_byteCount);
-		operation.m_mq->remove_fd_watch(m_fd);
+		int res = read(m_fileHandle, m_buffer, m_byteCount);
+		operation.m_ctx->remove_fd_watch(m_fileHandle);
 		return res;
 	};
-	operation.m_mq->add_fd_watch(m_fd, reinterpret_cast<void*>(&operation), EPOLLIN);
+	operation.m_ctx->add_fd_watch(m_fileHandle, reinterpret_cast<void*>(&operation), EPOLLIN);
 	return true;
 }
 
 void cppcoro::file_read_operation_impl::cancel(
 	cppcoro::detail::linux_async_operation_base& operation) noexcept
 {
-	operation.m_mq->remove_fd_watch(m_fd);
+	operation.m_ctx->remove_fd_watch(m_fileHandle);
 }
 #endif

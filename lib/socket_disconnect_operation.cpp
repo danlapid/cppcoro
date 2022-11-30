@@ -113,18 +113,18 @@ bool cppcoro::net::socket_disconnect_operation_impl::try_start(
 	cppcoro::detail::linux_async_operation_base& operation) noexcept
 {
 	operation.m_completeFunc = [=]() {
-		operation.m_mq->remove_fd_watch(m_socket.native_handle());
+		operation.m_ctx->remove_fd_watch(m_socket.native_handle());
 		int res = m_socket.close();
 		return res;
 	};
-	operation.m_mq->add_fd_watch(m_socket.native_handle(), reinterpret_cast<void*>(&operation), EPOLLOUT);
+	operation.m_ctx->add_fd_watch(m_socket.native_handle(), reinterpret_cast<void*>(&operation), EPOLLOUT);
 	return true;
 }
 
 void cppcoro::net::socket_disconnect_operation_impl::cancel(
 	cppcoro::detail::linux_async_operation_base& operation) noexcept
 {
-	operation.m_mq->remove_fd_watch(m_socket.native_handle());
+	operation.m_ctx->remove_fd_watch(m_socket.native_handle());
 }
 
 void cppcoro::net::socket_disconnect_operation_impl::get_result(

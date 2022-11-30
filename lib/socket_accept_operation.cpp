@@ -141,17 +141,17 @@ bool cppcoro::net::socket_accept_operation_impl::try_start(
 	operation.m_completeFunc = [=]() {
 		socklen_t len = sizeof(m_addressBuffer) / 2;
 		int res = accept(m_listeningSocket.native_handle(), reinterpret_cast<sockaddr*>(m_addressBuffer), &len);
-		operation.m_mq->remove_fd_watch(m_listeningSocket.native_handle());
+		operation.m_ctx->remove_fd_watch(m_listeningSocket.native_handle());
 		return res;
 	};
-	operation.m_mq->add_fd_watch(m_listeningSocket.native_handle(), reinterpret_cast<void*>(&operation), EPOLLIN);
+	operation.m_ctx->add_fd_watch(m_listeningSocket.native_handle(), reinterpret_cast<void*>(&operation), EPOLLIN);
 	return true;
 }
 
 void cppcoro::net::socket_accept_operation_impl::cancel(
 	cppcoro::detail::linux_async_operation_base& operation) noexcept
 {
-	operation.m_mq->remove_fd_watch(m_listeningSocket.native_handle());
+	operation.m_ctx->remove_fd_watch(m_listeningSocket.native_handle());
 }
 
 void cppcoro::net::socket_accept_operation_impl::get_result(
@@ -166,7 +166,7 @@ void cppcoro::net::socket_accept_operation_impl::get_result(
 		};
 	}
 
-	m_acceptingSocket = socket(operation.m_res, m_acceptingSocket.m_mq);
+	m_acceptingSocket = socket(operation.m_res, m_acceptingSocket.m_ctx);
 	sockaddr* remoteSockaddr = reinterpret_cast<sockaddr*>(m_addressBuffer);
 	sockaddr* localSockaddr = reinterpret_cast<sockaddr*>(m_addressBuffer + sizeof(m_addressBuffer)/2);
 

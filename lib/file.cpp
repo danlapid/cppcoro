@@ -38,7 +38,7 @@ std::uint64_t cppcoro::file::size() const
 	return size.QuadPart;
 #elif CPPCORO_OS_LINUX
 	struct stat sb;
-	if (fstat(m_fileData.fd.fd(), &sb) < 0)
+	if (fstat(m_fileHandle.fileHandle.handle(), &sb) < 0)
 	{
 		throw std::system_error
 		{
@@ -52,13 +52,12 @@ std::uint64_t cppcoro::file::size() const
 #endif
 }
 
-#if CPPCORO_OS_WINNT
-cppcoro::file::file(detail::win32::safe_handle&& fileHandle) noexcept
+cppcoro::file::file(detail::safe_file_handle&& fileHandle) noexcept
 	: m_fileHandle(std::move(fileHandle))
-{
-}
+{}
 
-cppcoro::detail::win32::safe_handle cppcoro::file::open(
+#if CPPCORO_OS_WINNT
+cppcoro::detail::safe_file_handle cppcoro::file::open(
 	detail::win32::dword_t fileAccess,
 	io_service& ioService,
 	const cppcoro::filesystem::path& path,
@@ -123,7 +122,7 @@ cppcoro::detail::win32::safe_handle cppcoro::file::open(
 	}
 
 	// Open the file
-	detail::win32::safe_handle fileHandle(
+	detail::safe_file_handle_t fileHandle(
 		::CreateFileW(
 			path.wstring().c_str(),
 			fileAccess,
@@ -146,7 +145,7 @@ cppcoro::detail::win32::safe_handle cppcoro::file::open(
 	// Associate with the I/O service's completion port.
 	const HANDLE result = ::CreateIoCompletionPort(
 		fileHandle.handle(),
-		ioService.native_iocp_handle(),
+		ioService.get_io_context(),
 		0,
 		0);
 	if (result == nullptr)
@@ -178,17 +177,13 @@ cppcoro::detail::win32::safe_handle cppcoro::file::open(
 		};
 	}
 
-	return std::move(fileHandle);
+	return {std::move(fileHandle), ioService.get_io_context()};
 }
 
 #elif CPPCORO_OS_LINUX
 
-cppcoro::file::file(detail::linux::safe_file_data &&fileData) noexcept
-	: m_fileData(std::move(fileData))
-{
-}
 
-cppcoro::detail::linux::safe_file_data cppcoro::file::open(
+cppcoro::detail::safe_file_handle cppcoro::file::open(
 	int fileAccess,
 	io_service &ioService,
 	const std::filesystem::path &path,
@@ -239,9 +234,9 @@ cppcoro::detail::linux::safe_file_data cppcoro::file::open(
 		break;
 	}
 
-	cppcoro::detail::linux::safe_fd fd(
+	cppcoro::detail::safe_file_handle_t fd(
 		::open(path.c_str(), flags | O_NONBLOCK, S_IRWXU | S_IRWXG));
-	if (fd.fd() < 0)
+	if (fd.handle() < 0)
 	{
 		throw std::system_error
 		{
@@ -253,6 +248,6 @@ cppcoro::detail::linux::safe_file_data cppcoro::file::open(
 
 	//posix_fadvise(fd.get(), 0, 0, advice);
 
-	return {std::move(fd), ioService.get_mq()};
+	return {std::move(fd), ioService.get_io_context()};
 }
 #endif

@@ -18,11 +18,7 @@
 
 #include <cppcoro/cancellation_token.hpp>
 
-#if CPPCORO_OS_WINNT
-# include <cppcoro/detail/win32.hpp>
-#elif CPPCORO_OS_LINUX
-# include <cppcoro/detail/linux.hpp>
-#endif
+#include <cppcoro/detail/platform.hpp>
 
 namespace cppcoro
 {
@@ -98,10 +94,10 @@ namespace cppcoro
 			int close();
 
 
-#if CPPCORO_OS_WINNT
-			/// Get the Win32 socket handle assocaited with this socket.
-			cppcoro::detail::win32::socket_t native_handle() noexcept { return m_handle; }
+			/// Get the underlyiend socket handle assocaited with this socket.
+			cppcoro::detail::socket_handle_t native_handle() noexcept { return m_handle; }
 
+#if CPPCORO_OS_WINNT
 			/// Query whether I/O operations that complete synchronously will skip posting
 			/// an I/O completion event to the I/O completion port.
 			///
@@ -110,9 +106,6 @@ namespace cppcoro
 			/// operation completing synchronously or whether it should suspend the coroutine
 			/// and wait until the I/O completion event is dispatched to an I/O thread.
 			bool skip_completion_on_success() noexcept { return m_skipCompletionOnSuccess; }
-#elif CPPCORO_OS_LINUX
-			/// Get the linux fd assocaited with this socket.
-			cppcoro::detail::linux::fd_t native_handle() noexcept { return m_handle; }
 #endif
 
 			/// Get the address and port of the local end-point.
@@ -252,26 +245,22 @@ namespace cppcoro
 			void close_recv();
 
 
+			explicit socket(
+				cppcoro::detail::socket_handle_t handle,
+				cppcoro::detail::io_context_t ctx
 #if CPPCORO_OS_WINNT
-			explicit socket(
-				cppcoro::detail::win32::socket_t handle,
-				bool skipCompletionOnSuccess) noexcept;
-#elif CPPCORO_OS_LINUX
-			explicit socket(
-				cppcoro::detail::linux::fd_t handle,
-				cppcoro::detail::linux::message_queue* mq) noexcept;
+				, bool skipCompletionOnSuccess
 #endif
+				) noexcept;
 		private:
 
 			friend class socket_accept_operation_impl;
 			friend class socket_connect_operation_impl;
 
+			cppcoro::detail::socket_handle_t m_handle;
+			cppcoro::detail::io_context_t m_ctx;
 #if CPPCORO_OS_WINNT
-			cppcoro::detail::win32::socket_t m_handle;
 			bool m_skipCompletionOnSuccess;
-#elif CPPCORO_OS_LINUX
-			cppcoro::detail::linux::fd_t m_handle;
-			cppcoro::detail::linux::message_queue* m_mq;
 #endif
 
 			ip_endpoint m_localEndPoint;

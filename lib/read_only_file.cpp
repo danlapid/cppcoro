@@ -10,6 +10,9 @@
 #  define WIN32_LEAN_AND_MEAN
 # endif
 # include <Windows.h>
+#elif CPPCORO_OS_LINUX
+#include <fcntl.h>
+#endif
 
 cppcoro::read_only_file cppcoro::read_only_file::open(
 	io_service& ioService,
@@ -18,32 +21,11 @@ cppcoro::read_only_file cppcoro::read_only_file::open(
 	file_buffering_mode bufferingMode)
 {
 	return read_only_file(file::open(
+#if CPPCORO_OS_WINNT
 		GENERIC_READ,
-		ioService,
-		path,
-		file_open_mode::open_existing,
-		shareMode,
-		bufferingMode));
-}
-
-cppcoro::read_only_file::read_only_file(
-	detail::win32::safe_handle&& fileHandle) noexcept
-	: file(std::move(fileHandle))
-	, readable_file(detail::win32::safe_handle{})
-{
-}
-
 #elif CPPCORO_OS_LINUX
-#include <fcntl.h>
-
-cppcoro::read_only_file cppcoro::read_only_file::open(
-	io_service& ioService,
-	const std::filesystem::path& path,
-	file_share_mode shareMode,
-	file_buffering_mode bufferingMode)
-{
-	return read_only_file(file::open(
 		O_RDONLY,
+#endif
 		ioService,
 		path,
 		file_open_mode::open_existing,
@@ -52,9 +34,8 @@ cppcoro::read_only_file cppcoro::read_only_file::open(
 }
 
 cppcoro::read_only_file::read_only_file(
-	detail::linux::safe_file_data&& fileData) noexcept
-	: file(std::move(fileData))
-	, readable_file(detail::linux::safe_file_data{})
+	detail::safe_file_handle&& fileHandle) noexcept
+	: file(std::move(fileHandle))
+	, readable_file(detail::safe_file_handle{})
 {
 }
-#endif

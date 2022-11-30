@@ -19,7 +19,7 @@ void cppcoro::writable_file::set_size(
 	LARGE_INTEGER position;
 	position.QuadPart = fileSize;
 
-	BOOL ok = ::SetFilePointerEx(m_fileHandle.handle(), position, nullptr, FILE_BEGIN);
+	BOOL ok = ::SetFilePointerEx(m_fileHandle.fileHandle.handle(), position, nullptr, FILE_BEGIN);
 	if (!ok)
 	{
 		DWORD errorCode = ::GetLastError();
@@ -31,7 +31,7 @@ void cppcoro::writable_file::set_size(
 		};
 	}
 
-	ok = ::SetEndOfFile(m_fileHandle.handle());
+	ok = ::SetEndOfFile(m_fileHandle.fileHandle.handle());
 	if (!ok)
 	{
 		DWORD errorCode = ::GetLastError();
@@ -43,6 +43,23 @@ void cppcoro::writable_file::set_size(
 		};
 	}
 }
+#elif CPPCORO_OS_LINUX
+#include <unistd.h>
+
+void cppcoro::writable_file::set_size(
+	std::uint64_t fileSize)
+{
+	if (ftruncate64(m_fileHandle.fileHandle.handle(), fileSize) < 0)
+	{
+		throw std::system_error
+		{
+			errno,
+			std::system_category(),
+			"error setting file size: ftruncate64"
+		};
+	}
+}
+#endif
 
 cppcoro::file_write_operation cppcoro::writable_file::write(
 	std::uint64_t offset,
@@ -50,10 +67,11 @@ cppcoro::file_write_operation cppcoro::writable_file::write(
 	std::size_t byteCount) noexcept
 {
 	return file_write_operation{
-		m_fileHandle.handle(),
+		m_fileHandle.fileHandle.handle(),
 		offset,
 		buffer,
-		byteCount
+		byteCount,
+		m_fileHandle.ctx
 	};
 }
 
@@ -64,56 +82,11 @@ cppcoro::file_write_operation_cancellable cppcoro::writable_file::write(
 	cancellation_token ct) noexcept
 {
 	return file_write_operation_cancellable{
-		m_fileHandle.handle(),
+		m_fileHandle.fileHandle.handle(),
 		offset,
 		buffer,
 		byteCount,
+		m_fileHandle.ctx,
 		std::move(ct)
 	};
 }
-
-#elif CPPCORO_OS_LINUX
-#include <unistd.h>
-
-void cppcoro::writable_file::set_size(
-	std::uint64_t fileSize)
-{
-	if (ftruncate64(m_fileData.fd.fd(), fileSize) < 0)
-	{
-		throw std::system_error
-		{
-			errno,
-			std::system_category(),
-			"error setting file size: ftruncate64"
-		};
-	}
-}
-
-cppcoro::file_write_operation cppcoro::writable_file::write(
-	std::uint64_t offset,
-	const void* buffer,
-	std::size_t byteCount) noexcept
-{
-	return file_write_operation(
-		m_fileData.fd.fd(),
-		m_fileData.mq,
-		offset,
-		buffer,
-		byteCount);
-}
-
-cppcoro::file_write_operation_cancellable cppcoro::writable_file::write(
-	std::uint64_t offset,
-	const void* buffer,
-	std::size_t byteCount,
-	cancellation_token ct) noexcept
-{
-	return file_write_operation_cancellable(
-		m_fileData.fd.fd(),
-		m_fileData.mq,
-		offset,
-		buffer,
-		byteCount,
-		std::move(ct));
-}
-#endif

@@ -9,11 +9,7 @@
 #include <cppcoro/cancellation_token.hpp>
 #include <cppcoro/cancellation_registration.hpp>
 
-#if CPPCORO_OS_WINNT
-# include <cppcoro/detail/win32.hpp>
-#elif CPPCORO_OS_LINUX
-# include <cppcoro/detail/linux.hpp>
-#endif
+#include <cppcoro/detail/platform.hpp>
 
 #include <optional>
 #include <chrono>
@@ -134,11 +130,9 @@ namespace cppcoro
 
 		void notify_work_finished() noexcept;
 
+		detail::io_context_t get_io_context() noexcept;
 #if CPPCORO_OS_WINNT
-		detail::win32::handle_t native_iocp_handle() noexcept;
 		void ensure_winsock_initialised();
-#elif CPPCORO_OS_LINUX
-		detail::linux::message_queue* get_mq() noexcept;
 #endif
 
 	private:
@@ -173,10 +167,8 @@ namespace cppcoro
 
 #if CPPCORO_OS_WINNT
 		detail::win32::safe_handle m_iocpHandle;
-
 		std::atomic<bool> m_winsockInitialised;
 		std::mutex m_winsockInitialisationMutex;
-
 #elif CPPCORO_OS_LINUX
  		detail::linux::message_queue m_mq;
 #endif

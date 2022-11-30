@@ -27,9 +27,9 @@ namespace cppcoro
 
 			linux_async_operation_base(
 				detail::linux::io_state::callback_type* callback,
-				detail::linux::message_queue* mq) noexcept
+				detail::linux::message_queue* ctx) noexcept
 				: detail::linux::io_state(callback)
-				, m_mq(mq)
+				, m_ctx(ctx)
 			{}
 
 			std::size_t get_result()
@@ -45,9 +45,9 @@ namespace cppcoro
 				return m_res;
 			}
 
+ 			detail::linux::message_queue* m_ctx;
 			std::int32_t m_res;
 			std::function<int()> m_completeFunc;
- 			detail::linux::message_queue* m_mq;
 		};
 
 		template<typename OPERATION>
@@ -56,9 +56,9 @@ namespace cppcoro
 		{
 		protected:
 
-			linux_async_operation(detail::linux::message_queue* mq) noexcept
+			linux_async_operation(detail::linux::message_queue* ctx) noexcept
 				: linux_async_operation_base(
-					&linux_async_operation::on_operation_completed, mq)
+					&linux_async_operation::on_operation_completed, ctx)
 			{}
 
 		public:
@@ -105,10 +105,10 @@ namespace cppcoro
 		protected:
 
 			linux_async_operation_cancellable(
-				detail::linux::message_queue* mq,
+				detail::linux::message_queue* ctx,
 				cancellation_token&& ct) noexcept
 				: linux_async_operation_base(
-					  &linux_async_operation_cancellable::on_operation_completed, mq)
+					  &linux_async_operation_cancellable::on_operation_completed, ctx)
 				, m_state(ct.is_cancellation_requested() ? state::completed : state::not_started)
 				, m_cancellationToken(std::move(ct))
 			{
@@ -271,7 +271,7 @@ namespace cppcoro
 				{
 					static_cast<OPERATION*>(this)->cancel();
 				}
-				m_mq->enqueue_message(reinterpret_cast<void*>(m_awaitingCoroutine.address()),
+				m_ctx->enqueue_message(reinterpret_cast<void*>(m_awaitingCoroutine.address()),
 					detail::linux::RESUME_TYPE);
 			}
 
