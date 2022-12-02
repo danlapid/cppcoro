@@ -233,6 +233,20 @@ jobs:
             environment_script: "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Auxiliary/Build/vcvars64.bat",
             cxxver: 20,
           }
+          - {
+            name: "Windows MinGW (x64) C++17",
+            os: windows-2022,
+            buildtype: Release,
+            cxx: "x86_64-w64-mingw32-g++",
+            cxxver: 17,
+          }
+          - {
+            name: "Windows MinGW (x64) C++20",
+            os: windows-2022,
+            buildtype: Release,
+            cxx: "g++",
+            cxxver: 20,
+          }
 
     steps:
     - uses: actions/checkout@v2
@@ -331,6 +345,15 @@ jobs:
         choco install visualstudio2017-workload-nativedesktop
         choco install visualstudio2017-workload-vctools
 
+    - name: Install MinGW
+      id: install_mingw
+      if: startsWith(matrix.config.os, 'windows-2022') && ( matrix.config.cxx == 'x86_64-w64-mingw32-g++' )
+      shell: bash
+      working-directory: ${{ env.HOME }}
+      run: |
+        choco install mingw
+        choco install ninja
+
     - name: Create Build Environment
       # Some projects don't allow in-source building, so create a separate build directory
       # We'll use this as our working directory for all subsequent commands
@@ -341,10 +364,10 @@ jobs:
       # access regardless of the host operating system
       shell: bash
       working-directory: ${{runner.workspace}}/build
-      env: 
+      env:
         CXX: ${{ matrix.config.cxx }}
-      # Note the current convention is to use the -S and -B options here to specify source 
-      # and build directories, but this is only available with CMake 3.13 and higher.  
+      # Note the current convention is to use the -S and -B options here to specify source
+      # and build directories, but this is only available with CMake 3.13 and higher.
       # The CMake binaries on the Github Actions machines are (as of this writing) 3.12
       run: |
         # run environment setup script if any
@@ -367,6 +390,6 @@ jobs:
     - name: Test
       working-directory: ${{runner.workspace}}/build
       shell: bash
-      # Execute tests defined by the CMake configuration.  
+      # Execute tests defined by the CMake configuration.
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       run: ctest --output-on-failure -C ${{ matrix.config.buildtype }}
