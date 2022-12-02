@@ -3,6 +3,8 @@
 // Licenced under MIT license. See LICENSE.txt for details.
 ///////////////////////////////////////////////////////////////////////////////
 
+#include <memory>
+
 #include <cppcoro/net/socket.hpp>
 
 #include <cppcoro/net/socket_accept_operation.hpp>
@@ -17,16 +19,16 @@
 #include "socket_helpers.hpp"
 
 #if CPPCORO_OS_WINNT
-# include <WinSock2.h>
-# include <WS2tcpip.h>
-# include <MSWSock.h>
-# include <Windows.h>
+# include <winsock2.h>
+# include <ws2tcpip.h>
+# include <mswsock.h>
+# include <windows.h>
 
 namespace
 {
 	namespace local
 	{
-		std::tuple<SOCKET, bool> create_socket(
+		SOCKET create_socket(
 			int addressFamily,
 			int socketType,
 			int protocol,
@@ -34,26 +36,26 @@ namespace
 		{
 			// Enumerate available protocol providers for the specified socket type.
 
-			WSAPROTOCOL_INFOW stackInfos[4];
-			std::unique_ptr<WSAPROTOCOL_INFOW[]> heapInfos;
-			WSAPROTOCOL_INFOW* selectedProtocolInfo = nullptr;
+			WSAPROTOCOL_INFO stackInfos[4];
+			std::unique_ptr<WSAPROTOCOL_INFO[]> heapInfos;
+			WSAPROTOCOL_INFO* selectedProtocolInfo = nullptr;
 
 			{
 				INT protocols[] = { protocol, 0 };
 				DWORD bufferSize = sizeof(stackInfos);
-				WSAPROTOCOL_INFOW* infos = stackInfos;
+				WSAPROTOCOL_INFO* infos = stackInfos;
 
-				int protocolCount = ::WSAEnumProtocolsW(protocols, infos, &bufferSize);
+				int protocolCount = ::WSAEnumProtocols(protocols, infos, &bufferSize);
 				if (protocolCount == SOCKET_ERROR)
 				{
 					int errorCode = ::WSAGetLastError();
 					if (errorCode == WSAENOBUFS)
 					{
-						DWORD requiredElementCount = bufferSize / sizeof(WSAPROTOCOL_INFOW);
-						heapInfos = std::make_unique<WSAPROTOCOL_INFOW[]>(requiredElementCount);
-						bufferSize = requiredElementCount * sizeof(WSAPROTOCOL_INFOW);
+						DWORD requiredElementCount = bufferSize / sizeof(WSAPROTOCOL_INFO);
+						heapInfos = std::make_unique<WSAPROTOCOL_INFO[]>(requiredElementCount);
+						bufferSize = requiredElementCount * sizeof(WSAPROTOCOL_INFO);
 						infos = heapInfos.get();
-						protocolCount = ::WSAEnumProtocolsW(protocols, infos, &bufferSize);
+						protocolCount = ::WSAEnumProtocols(protocols, infos, &bufferSize);
 						if (protocolCount == SOCKET_ERROR)
 						{
 							errorCode = ::WSAGetLastError();
@@ -65,7 +67,7 @@ namespace
 						throw std::system_error(
 							errorCode,
 							std::system_category(),
-							"Error creating socket: WSAEnumProtocolsW");
+							"Error creating socket: WSAEnumProtocols");
 					}
 				}
 
@@ -97,7 +99,7 @@ namespace
 
 			const DWORD flags = WSA_FLAG_OVERLAPPED | flagNoInherit;
 
-			const SOCKET socketHandle = ::WSASocketW(
+			const SOCKET socketHandle = ::WSASocket(
 				addressFamily, socketType, protocol, selectedProtocolInfo, 0, flags);
 			if (socketHandle == INVALID_SOCKET)
 			{
@@ -143,29 +145,6 @@ namespace
 				}
 			}
 
-			const bool skipCompletionPortOnSuccess =
-				(selectedProtocolInfo->dwServiceFlags1 & XP1_IFS_HANDLES) != 0;
-
-			{
-				UCHAR completionModeFlags = FILE_SKIP_SET_EVENT_ON_HANDLE;
-				if (skipCompletionPortOnSuccess)
-				{
-					completionModeFlags |= FILE_SKIP_COMPLETION_PORT_ON_SUCCESS;
-				}
-
-				const BOOL ok = ::SetFileCompletionNotificationModes(
-					(HANDLE)socketHandle,
-					completionModeFlags);
-				if (!ok)
-				{
-					const DWORD errorCode = ::GetLastError();
-					throw std::system_error(
-						static_cast<int>(errorCode),
-						std::system_category(),
-						"Error creating socket: SetFileCompletionNotificationModes");
-				}
-			}
-
 			if (socketType == SOCK_STREAM)
 			{
 				// Turn off linger so that the destructor doesn't block while closing
@@ -190,7 +169,7 @@ namespace
 				}
 			}
 
-			return std::make_tuple(socketHandle, skipCompletionPortOnSuccess);
+			return socketHandle;
 		}
 	}
 }
@@ -199,10 +178,10 @@ cppcoro::net::socket cppcoro::net::socket::create_tcpv4(io_service& ioSvc)
 {
 	ioSvc.ensure_winsock_initialised();
 
-	auto[socketHandle, skipCompletionPortOnSuccess] = local::create_socket(
+	auto socketHandle = local::create_socket(
 		AF_INET, SOCK_STREAM, IPPROTO_TCP, ioSvc.native_iocp_handle());
 
-	socket result(socketHandle, skipCompletionPortOnSuccess);
+	socket result(socketHandle);
 	result.m_localEndPoint = ipv4_endpoint();
 	result.m_remoteEndPoint = ipv4_endpoint();
 	return result;
@@ -212,10 +191,10 @@ cppcoro::net::socket cppcoro::net::socket::create_tcpv6(io_service& ioSvc)
 {
 	ioSvc.ensure_winsock_initialised();
 
-	auto[socketHandle, skipCompletionPortOnSuccess] = local::create_socket(
+	auto socketHandle = local::create_socket(
 		AF_INET6, SOCK_STREAM, IPPROTO_TCP, ioSvc.native_iocp_handle());
 
-	socket result(socketHandle, skipCompletionPortOnSuccess);
+	socket result(socketHandle);
 	result.m_localEndPoint = ipv6_endpoint();
 	result.m_remoteEndPoint = ipv6_endpoint();
 	return result;
@@ -225,10 +204,10 @@ cppcoro::net::socket cppcoro::net::socket::create_udpv4(io_service& ioSvc)
 {
 	ioSvc.ensure_winsock_initialised();
 
-	auto[socketHandle, skipCompletionPortOnSuccess] = local::create_socket(
+	auto socketHandle = local::create_socket(
 		AF_INET, SOCK_DGRAM, IPPROTO_UDP, ioSvc.native_iocp_handle());
 
-	socket result(socketHandle, skipCompletionPortOnSuccess);
+	socket result(socketHandle);
 	result.m_localEndPoint = ipv4_endpoint();
 	result.m_remoteEndPoint = ipv4_endpoint();
 	return result;
@@ -238,65 +217,20 @@ cppcoro::net::socket cppcoro::net::socket::create_udpv6(io_service& ioSvc)
 {
 	ioSvc.ensure_winsock_initialised();
 
-	auto[socketHandle, skipCompletionPortOnSuccess] = local::create_socket(
+	auto socketHandle = local::create_socket(
 		AF_INET6, SOCK_DGRAM, IPPROTO_UDP, ioSvc.native_iocp_handle());
 
-	socket result(socketHandle, skipCompletionPortOnSuccess);
+	socket result(socketHandle);
 	result.m_localEndPoint = ipv6_endpoint();
 	result.m_remoteEndPoint = ipv6_endpoint();
 	return result;
-}
-
-cppcoro::net::socket::socket(socket&& other) noexcept
-	: m_handle(std::exchange(other.m_handle, INVALID_SOCKET))
-	, m_skipCompletionOnSuccess(other.m_skipCompletionOnSuccess)
-	, m_localEndPoint(std::move(other.m_localEndPoint))
-	, m_remoteEndPoint(std::move(other.m_remoteEndPoint))
-{}
-
-cppcoro::net::socket::~socket()
-{
-	if (m_handle != INVALID_SOCKET)
-	{
-		::closesocket(m_handle);
-	}
-}
-
-cppcoro::net::socket&
-cppcoro::net::socket::operator=(socket&& other) noexcept
-{
-	auto handle = std::exchange(other.m_handle, INVALID_SOCKET);
-	if (m_handle != INVALID_SOCKET)
-	{
-		::closesocket(m_handle);
-	}
-
-	m_handle = handle;
-	m_skipCompletionOnSuccess = other.m_skipCompletionOnSuccess;
-	m_localEndPoint = other.m_localEndPoint;
-	m_remoteEndPoint = other.m_remoteEndPoint;
-
-	return *this;
 }
 
 void cppcoro::net::socket::bind(const ip_endpoint& localEndPoint)
 {
 	SOCKADDR_STORAGE sockaddrStorage = { 0 };
 	SOCKADDR* sockaddr = reinterpret_cast<SOCKADDR*>(&sockaddrStorage);
-	if (localEndPoint.is_ipv4())
-	{
-		SOCKADDR_IN& ipv4Sockaddr = *reinterpret_cast<SOCKADDR_IN*>(sockaddr);
-		ipv4Sockaddr.sin_family = AF_INET;
-		std::memcpy(&ipv4Sockaddr.sin_addr, localEndPoint.to_ipv4().address().bytes(), 4);
-		ipv4Sockaddr.sin_port = localEndPoint.to_ipv4().port();
-	}
-	else
-	{
-		SOCKADDR_IN6& ipv6Sockaddr = *reinterpret_cast<SOCKADDR_IN6*>(sockaddr);
-		ipv6Sockaddr.sin6_family = AF_INET6;
-		std::memcpy(&ipv6Sockaddr.sin6_addr, localEndPoint.to_ipv6().address().bytes(), 16);
-		ipv6Sockaddr.sin6_port = localEndPoint.to_ipv6().port();
-	}
+	detail::ip_endpoint_to_sockaddr(localEndPoint, std::ref(sockaddrStorage));
 
 	int result = ::bind(m_handle, sockaddr, sizeof(sockaddrStorage));
 	if (result != 0)
@@ -482,11 +416,67 @@ void cppcoro::net::socket::close_recv()
 	}
 }
 
+cppcoro::net::socket::~socket()
+{
+	if (m_handle != INVALID_SOCKET)
+	{
+		::closesocket(m_handle);
+	}
+}
+
+cppcoro::net::socket::socket(socket&& other) noexcept
+	: m_handle(std::exchange(other.m_handle, INVALID_SOCKET))
+	, m_localEndPoint(std::move(other.m_localEndPoint))
+	, m_remoteEndPoint(std::move(other.m_remoteEndPoint))
+{}
+
+cppcoro::net::socket&
+cppcoro::net::socket::operator=(socket&& other) noexcept
+{
+	auto handle = std::exchange(other.m_handle, INVALID_SOCKET);
+	if (m_handle != INVALID_SOCKET)
+	{
+		::closesocket(m_handle);
+	}
+
+	m_handle = handle;
+	m_localEndPoint = other.m_localEndPoint;
+	m_remoteEndPoint = other.m_remoteEndPoint;
+
+	return *this;
+}
+
+#if CPPCORO_OS_WINNT
+cppcoro::detail::win32::socket_t duplicate_socket(const cppcoro::detail::win32::socket_t& handle) {
+	WSAPROTOCOL_INFO wsa_pi;
+    WSADuplicateSocket(handle, GetCurrentProcessId(), &wsa_pi);
+    return WSASocket(wsa_pi.iAddressFamily, wsa_pi.iSocketType, wsa_pi.iProtocol, &wsa_pi, 0, 0);
+}
+#elif CPPCORO_OS_LINUX
+cppcoro::detail::linux::fd_t duplicate_socket(const cppcoro::detail::linux::fd_t& handle) {
+	return dup(handle);
+}
+#endif
+
+cppcoro::net::socket::socket(const socket& other) noexcept
+	: m_handle(duplicate_socket(other.m_handle))
+	, m_localEndPoint(std::move(other.m_localEndPoint))
+	, m_remoteEndPoint(std::move(other.m_remoteEndPoint))
+{}
+
+cppcoro::net::socket&
+cppcoro::net::socket::operator=(const socket& other) noexcept
+{
+	m_handle = duplicate_socket(other.m_handle);
+	m_localEndPoint = other.m_localEndPoint;
+	m_remoteEndPoint = other.m_remoteEndPoint;
+
+	return *this;
+}
+
 cppcoro::net::socket::socket(
-	cppcoro::detail::win32::socket_t handle,
-	bool skipCompletionOnSuccess) noexcept
+	cppcoro::detail::win32::socket_t handle) noexcept
 	: m_handle(handle)
-	, m_skipCompletionOnSuccess(skipCompletionOnSuccess)
 {
 }
 

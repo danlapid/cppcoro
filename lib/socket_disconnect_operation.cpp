@@ -11,10 +11,10 @@
 #include <system_error>
 
 #if CPPCORO_OS_WINNT
-# include <WinSock2.h>
-# include <WS2tcpip.h>
-# include <MSWSock.h>
-# include <Windows.h>
+# include <winsock2.h>
+# include <ws2tcpip.h>
+# include <mswsock.h>
+# include <windows.h>
 
 bool cppcoro::net::socket_disconnect_operation_impl::try_start(
 	cppcoro::detail::win32_overlapped_operation_base& operation) noexcept
@@ -41,12 +41,6 @@ bool cppcoro::net::socket_disconnect_operation_impl::try_start(
 		}
 	}
 
-	// Need to read this flag before starting the operation, otherwise
-	// it may be possible that the operation will complete immediately
-	// on another thread and then destroy the socket before we get a
-	// chance to read it.
-	const bool skipCompletionOnSuccess = m_socket.skip_completion_on_success();
-
 	// Need to add TF_REUSE_SOCKET to these flags if we want to allow reusing
 	// a socket for subsequent connections once the disconnect operation
 	// completes.
@@ -67,13 +61,6 @@ bool cppcoro::net::socket_disconnect_operation_impl::try_start(
 			return false;
 		}
 	}
-	else if (skipCompletionOnSuccess)
-	{
-		// Successfully completed synchronously and no completion event
-		// will be posted to an I/O thread so we can return without suspending.
-		operation.m_errorCode = ERROR_SUCCESS;
-		return false;
-	}
 
 	return true;
 }
@@ -81,9 +68,14 @@ bool cppcoro::net::socket_disconnect_operation_impl::try_start(
 void cppcoro::net::socket_disconnect_operation_impl::cancel(
 	cppcoro::detail::win32_overlapped_operation_base& operation) noexcept
 {
+#if CPPCORO_OS_WINNT >= 0x600
 	(void)::CancelIoEx(
 		reinterpret_cast<HANDLE>(m_socket.native_handle()),
 		operation.get_overlapped());
+#else
+	(void)::CancelIo(
+		reinterpret_cast<HANDLE>(m_socket.native_handle()));
+#endif
 }
 
 void cppcoro::net::socket_disconnect_operation_impl::get_result(

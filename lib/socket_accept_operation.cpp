@@ -11,10 +11,10 @@
 #include <system_error>
 
 #if CPPCORO_OS_WINNT
-# include <WinSock2.h>
-# include <WS2tcpip.h>
-# include <MSWSock.h>
-# include <Windows.h>
+# include <winsock2.h>
+# include <ws2tcpip.h>
+# include <mswsock.h>
+# include <windows.h>
 
 // TODO: Eliminate duplication of implementation between socket_accept_operation
 // and socket_accept_operation_cancellable.
@@ -26,12 +26,6 @@ bool cppcoro::net::socket_accept_operation_impl::try_start(
 		(sizeof(m_addressBuffer) / 2) >= (16 + sizeof(SOCKADDR_IN)) &&
 		(sizeof(m_addressBuffer) / 2) >= (16 + sizeof(SOCKADDR_IN6)),
 		"AcceptEx requires address buffer to be at least 16 bytes more than largest address.");
-
-	// Need to read this flag before starting the operation, otherwise
-	// it may be possible that the operation will complete immediately
-	// on another thread and then destroy the socket before we get a
-	// chance to read it.
-	const bool skipCompletionOnSuccess = m_listeningSocket.skip_completion_on_success();
 
 	DWORD bytesReceived = 0;
 	BOOL ok = ::AcceptEx(
@@ -52,11 +46,6 @@ bool cppcoro::net::socket_accept_operation_impl::try_start(
 			return false;
 		}
 	}
-	else if (skipCompletionOnSuccess)
-	{
-		operation.m_errorCode = ERROR_SUCCESS;
-		return false;
-	}
 
 	return true;
 }
@@ -64,9 +53,14 @@ bool cppcoro::net::socket_accept_operation_impl::try_start(
 void cppcoro::net::socket_accept_operation_impl::cancel(
 	cppcoro::detail::win32_overlapped_operation_base& operation) noexcept
 {
+#if CPPCORO_OS_WINNT >= 0x600
 	(void)::CancelIoEx(
 		reinterpret_cast<HANDLE>(m_listeningSocket.native_handle()),
 		operation.get_overlapped());
+#else
+	(void)::CancelIo(
+		reinterpret_cast<HANDLE>(m_listeningSocket.native_handle()));
+#endif
 }
 
 void cppcoro::net::socket_accept_operation_impl::get_result(

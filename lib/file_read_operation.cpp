@@ -9,7 +9,7 @@
 # ifndef WIN32_LEAN_AND_MEAN
 #  define WIN32_LEAN_AND_MEAN
 # endif
-# include <Windows.h>
+# include <windows.h>
 
 bool cppcoro::file_read_operation_impl::try_start(
 	cppcoro::detail::win32_overlapped_operation_base& operation) noexcept
@@ -25,8 +25,8 @@ bool cppcoro::file_read_operation_impl::try_start(
 		numberOfBytesToRead,
 		&numberOfBytesRead,
 		operation.get_overlapped());
-	const DWORD errorCode = ok ? ERROR_SUCCESS : ::GetLastError();
-	if (errorCode != ERROR_IO_PENDING)
+	const DWORD errorCode = ::GetLastError();
+	if (!ok && errorCode != ERROR_IO_PENDING)
 	{
 		// Completed synchronously.
 		//
@@ -47,7 +47,11 @@ bool cppcoro::file_read_operation_impl::try_start(
 void cppcoro::file_read_operation_impl::cancel(
 	cppcoro::detail::win32_overlapped_operation_base& operation) noexcept
 {
+#if CPPCORO_OS_WINNT >= 0x600
 	(void)::CancelIoEx(m_fileHandle, operation.get_overlapped());
+#else
+	(void)::CancelIo(m_fileHandle);
+#endif
 }
 
 #endif // CPPCORO_OS_WINNT

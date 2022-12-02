@@ -145,8 +145,10 @@ if(WIN32)
     )
     list(APPEND sources ${win32Sources})
 
-    list(APPEND libraries Ws2_32 Mswsock Synchronization)
-    list(APPEND compile_options /EHsc)
+    list(APPEND libraries ws2_32 mswsock synchronization)
+	if(MSVC)
+    	list(APPEND compile_options /EHsc)
+	endif()
 
     if("${MSVC_VERSION}" VERSION_GREATER_EQUAL 1900)
       # TODO remove this when experimental/non-experimental include are fixed

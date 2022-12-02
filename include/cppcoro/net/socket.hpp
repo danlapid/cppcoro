@@ -80,30 +80,9 @@ namespace cppcoro
 			/// If the socket could not be created for some reason.
 			static socket create_udpv6(io_service& ioSvc);
 
-			socket(socket&& other) noexcept;
-
-			/// Closes the socket, releasing any associated resources.
-			///
-			/// If the socket still has an open connection then the connection will be
-			/// reset. The destructor will not block waiting for queueud data to be sent.
-			/// If you need to ensure that queued data is delivered then you must call
-			/// disconnect() and wait until the disconnect operation completes.
-			~socket();
-
-			socket& operator=(socket&& other) noexcept;
-
 #if CPPCORO_OS_WINNT
 			/// Get the Win32 socket handle assocaited with this socket.
 			cppcoro::detail::win32::socket_t native_handle() noexcept { return m_handle; }
-
-			/// Query whether I/O operations that complete synchronously will skip posting
-			/// an I/O completion event to the I/O completion port.
-			///
-			/// The operation class implementations can use this to determine whether or not
-			/// it should immediately resume the coroutine on the current thread upon an
-			/// operation completing synchronously or whether it should suspend the coroutine
-			/// and wait until the I/O completion event is dispatched to an I/O thread.
-			bool skip_completion_on_success() noexcept { return m_skipCompletionOnSuccess; }
 #endif
 
 			/// Get the address and port of the local end-point.
@@ -242,6 +221,18 @@ namespace cppcoro
 			void close_send();
 			void close_recv();
 
+			/// Closes the socket, releasing any associated resources.
+			///
+			/// If the socket still has an open connection then the connection will be
+			/// reset. The destructor will not block waiting for queueud data to be sent.
+			/// If you need to ensure that queued data is delivered then you must call
+			/// disconnect() and wait until the disconnect operation completes.
+			~socket();
+
+			socket(socket&& other) noexcept;
+			socket& operator=(socket&& other) noexcept;
+ 			socket(const socket& other) noexcept;
+ 			socket& operator=(const socket& other) noexcept;
 		private:
 
 			friend class socket_accept_operation_impl;
@@ -249,13 +240,11 @@ namespace cppcoro
 
 #if CPPCORO_OS_WINNT
 			explicit socket(
-				cppcoro::detail::win32::socket_t handle,
-				bool skipCompletionOnSuccess) noexcept;
+				cppcoro::detail::win32::socket_t handle) noexcept;
 #endif
 
 #if CPPCORO_OS_WINNT
 			cppcoro::detail::win32::socket_t m_handle;
-			bool m_skipCompletionOnSuccess;
 #endif
 
 			ip_endpoint m_localEndPoint;
