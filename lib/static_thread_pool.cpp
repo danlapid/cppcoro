@@ -3,6 +3,7 @@
 // Licenced under MIT license. See LICENSE.txt for details.
 ///////////////////////////////////////////////////////////////////////////////
 
+#if !CPPCORO_OS_WINNT || CPPCORO_OS_WINNT >= 0x0600
 #include <cppcoro/static_thread_pool.hpp>
 
 #include "auto_reset_event.hpp"
@@ -665,7 +666,7 @@ namespace cppcoro
 				return nullptr;
 			}
 
-			// Reverse the list 
+			// Reverse the list
 			do
 			{
 				auto* next = std::exchange(tail->m_next, head);
@@ -752,3 +753,5 @@ namespace cppcoro
 		}
 	}
 }
+
+#endif
