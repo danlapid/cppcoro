@@ -23,6 +23,7 @@ DOCTEST_TEST_SUITE_BEGIN("single_producer_sequencer");
 
 using namespace cppcoro;
 
+#if !CPPCORO_OS_WINNT || CPPCORO_OS_WINNT >= 0x0600
 DOCTEST_TEST_CASE("multi-threaded usage single consumer")
 {
 	static_thread_pool tp{ 2 };
@@ -91,5 +92,6 @@ DOCTEST_TEST_CASE("multi-threaded usage single consumer")
 
 	CHECK(result == expectedResult);
 }
+#endif
 
 DOCTEST_TEST_SUITE_END();

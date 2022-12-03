@@ -19,6 +19,7 @@
 
 TEST_SUITE_BEGIN("static_thread_pool");
 
+#if !CPPCORO_OS_WINNT || CPPCORO_OS_WINNT >= 0x0600
 TEST_CASE("construct/destruct")
 {
 	cppcoro::static_thread_pool threadPool;
@@ -286,5 +287,6 @@ TEST_CASE("for_each_async")
 	}
 
 }
+#endif
 
 TEST_SUITE_END();

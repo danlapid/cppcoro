@@ -87,6 +87,7 @@ TEST_CASE("multiple waiters")
 		check()));
 }
 
+#if !CPPCORO_OS_WINNT || CPPCORO_OS_WINNT >= 0x0600
 TEST_CASE("multi-threaded")
 {
 	cppcoro::static_thread_pool tp{ 3 };
@@ -136,5 +137,6 @@ TEST_CASE("multi-threaded")
 
 	cppcoro::sync_wait(cppcoro::when_all(std::move(tasks)));
 }
+#endif
 
 TEST_SUITE_END();
