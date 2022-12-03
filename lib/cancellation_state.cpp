@@ -9,6 +9,7 @@
 
 #include <cppcoro/cancellation_registration.hpp>
 
+#include <exception>
 #include <cassert>
 #include <cstdlib>
 

@@ -13,7 +13,7 @@
 # ifndef WIN32_LEAN_AND_MEAN
 #  define WIN32_LEAN_AND_MEAN
 # endif
-# include <Windows.h>
+# include <windows.h>
 #endif
 
 cppcoro::file::~file()
@@ -23,7 +23,7 @@ std::uint64_t cppcoro::file::size() const
 {
 #if CPPCORO_OS_WINNT
 	LARGE_INTEGER size;
-	BOOL ok = ::GetFileSizeEx(m_fileHandle.handle(), &size);
+	BOOL ok = ::GetFileSizeEx(m_fileHandle.fileHandle.handle(), &size);
 	if (!ok)
 	{
 		DWORD errorCode = ::GetLastError();
@@ -58,7 +58,7 @@ cppcoro::file::file(detail::safe_file_handle&& fileHandle) noexcept
 
 #if CPPCORO_OS_WINNT
 cppcoro::detail::safe_file_handle cppcoro::file::open(
-	detail::win32::dword_t fileAccess,
+	int fileAccess,
 	io_service& ioService,
 	const cppcoro::filesystem::path& path,
 	file_open_mode openMode,
@@ -125,7 +125,7 @@ cppcoro::detail::safe_file_handle cppcoro::file::open(
 	detail::safe_file_handle_t fileHandle(
 		::CreateFileW(
 			path.wstring().c_str(),
-			fileAccess,
+			static_cast<detail::win32::dword_t>(fileAccess),
 			shareFlags,
 			nullptr,
 			creationDisposition,
@@ -156,24 +156,6 @@ cppcoro::detail::safe_file_handle cppcoro::file::open(
 			static_cast<int>(errorCode),
 			std::system_category(),
 			"error opening file: CreateIoCompletionPort"
-		};
-	}
-
-	// Configure I/O operations to avoid dispatching a completion event
-	// to the I/O service if the operation completes synchronously.
-	// This avoids unnecessary suspension/resuption of the awaiting coroutine.
-	const BOOL ok = ::SetFileCompletionNotificationModes(
-		fileHandle.handle(),
-		FILE_SKIP_COMPLETION_PORT_ON_SUCCESS |
-		FILE_SKIP_SET_EVENT_ON_HANDLE);
-	if (!ok)
-	{
-		const DWORD errorCode = ::GetLastError();
-		throw std::system_error
-		{
-			static_cast<int>(errorCode),
-			std::system_category(),
-			"error opening file: SetFileCompletionNotificationModes"
 		};
 	}
 

@@ -24,7 +24,7 @@ namespace cppcoro
 #		define async_operation win32_overlapped_operation
 #		define async_operation_cancellable win32_overlapped_operation_cancellable
 		using file_handle_t = win32::handle_t;
-		using safe_file_handle_t = win32::safe_handle_t;
+		using safe_file_handle_t = win32::safe_handle;
 		using socket_handle_t = win32::socket_t;
 		using io_context_t = win32::handle_t;
 #elif CPPCORO_OS_LINUX

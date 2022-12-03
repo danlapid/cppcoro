@@ -10,7 +10,7 @@
 
 #if CPPCORO_OS_WINNT
 # define WIN32_LEAN_AND_MEAN
-# include <Windows.h>
+# include <windows.h>
 #endif
 
 namespace
@@ -54,8 +54,8 @@ namespace cppcoro
 			const std::uint32_t loopCount = 2u << m_count;
 			for (std::uint32_t i = 0; i < loopCount; ++i)
 			{
-				::YieldProcessor();
-				::YieldProcessor();
+				YieldProcessor();
+				YieldProcessor();
 			}
 		}
 		else
@@ -98,4 +98,3 @@ namespace cppcoro
 		}
 	}
 }
-
