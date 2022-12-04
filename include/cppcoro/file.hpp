@@ -22,18 +22,17 @@ namespace cppcoro
 	class file
 	{
 	public:
-
-		file(file&& other) noexcept = default;
-
+ 		file(const file& other) noexcept = delete;
+ 		file& operator=(const file& other) noexcept = delete;
+ 		file(file&& other) noexcept = default;
+ 		file& operator=(file&& other) noexcept = default;
 		virtual ~file();
-
 		/// Get the size of the file in bytes.
 		std::uint64_t size() const;
 
 	protected:
- 		file(detail::safe_file_handle&& fileHandle) noexcept;
 
- 		static detail::safe_file_handle open(
+ 		static file open(
  			int fileAccess,
  			io_service& ioService,
  			const std::filesystem::path& path,
@@ -41,7 +40,10 @@ namespace cppcoro
  			file_share_mode shareMode,
  			file_buffering_mode bufferingMode);
 
- 		detail::safe_file_handle m_fileHandle;
+		file(detail::safe_file_handle_t fileHandle, io_service* ioService);
+
+ 		detail::safe_file_handle_t m_fileHandle;
+		io_service* m_ioService;
 	};
 }
 

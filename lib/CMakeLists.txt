@@ -69,6 +69,9 @@ set(detailIncludes
 	sync_wait_task.hpp
 	unwrap_reference.hpp
 	lightweight_manual_reset_event.hpp
+	platform.hpp
+	message_queue.hpp
+	async_operation.hpp
 )
 list(TRANSFORM detailIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/detail/")
 
@@ -141,39 +144,41 @@ if(WIN32)
 		win32.hpp
 		win32_overlapped_operation.hpp
 	)
-    list(TRANSFORM win32DetailIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/detail/")
-    list(APPEND detailIncludes ${win32DetailIncludes})
+	list(TRANSFORM win32DetailIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/detail/")
+	list(APPEND detailIncludes ${win32DetailIncludes})
 	list(APPEND netIncludes ${socketNetIncludes})
 
-    set(win32Sources
-        win32.cpp
-        io_service.cpp
-    )
-    list(APPEND sources ${win32Sources} ${fileSources} ${socketNetSources})
+	set(win32Sources
+		win32.cpp
+		win32_message_queue.cpp
+		io_service.cpp
+	)
+	list(APPEND sources ${win32Sources} ${fileSources} ${socketNetSources})
 
-    list(APPEND libraries ws2_32 mswsock synchronization)
+	list(APPEND libraries ws2_32 mswsock synchronization)
 	if(MSVC)
-    	list(APPEND compile_options /EHsc)
+		list(APPEND compile_options /EHsc)
 	endif()
 
-    if("${MSVC_VERSION}" VERSION_GREATER_EQUAL 1900)
-      # TODO remove this when experimental/non-experimental include are fixed
-      list(APPEND compile_definition _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING=1)
-    endif()
+	if("${MSVC_VERSION}" VERSION_GREATER_EQUAL 1900)
+	  # TODO remove this when experimental/non-experimental include are fixed
+	  list(APPEND compile_definition _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING=1)
+	endif()
 elseif(CMAKE_SYSTEM_NAME MATCHES "Linux")
-    set(linuxDetailIncludes
-        linux.hpp
-        linux_async_operation.hpp
-    )
-    list(TRANSFORM linuxDetailIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/detail/")
-    list(APPEND detailIncludes ${linuxDetailIncludes})
-    list(APPEND netIncludes ${socketNetIncludes})
+	set(linuxDetailIncludes
+		linux.hpp
+		linux_async_operation.hpp
+	)
+	list(TRANSFORM linuxDetailIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/detail/")
+	list(APPEND detailIncludes ${linuxDetailIncludes})
+	list(APPEND netIncludes ${socketNetIncludes})
 
-    set(linuxSources
-        linux.cpp
-        io_service.cpp
-    )
-    list(APPEND sources ${linuxSources} ${fileSources} ${socketNetSources})
+	set(linuxSources
+		linux.cpp
+		linux_message_queue.cpp
+		io_service.cpp
+	)
+	list(APPEND sources ${linuxSources} ${fileSources} ${socketNetSources})
 endif()
 
 add_library(cppcoro

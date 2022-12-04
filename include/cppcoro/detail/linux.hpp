@@ -5,15 +5,14 @@
 #ifndef CPPCORO_DETAIL_LINUX_HPP_INCLUDED
 #define CPPCORO_DETAIL_LINUX_HPP_INCLUDED
 
-#include <fcntl.h>
-#include <linux/limits.h>
-#include <sys/epoll.h>
-#include <sys/eventfd.h>
-#include <sys/resource.h>
-#include <sys/stat.h>
-#include <sys/timerfd.h>
-#include <unistd.h>
+#include <cppcoro/config.hpp>
+
+#if !CPPCORO_OS_LINUX
+# error <cppcoro/detail/linux.hpp> is only supported on the Linux platform.
+#endif
+
 #include <utility>
+#include <cstdint>
 
 namespace cppcoro
 {
@@ -22,12 +21,6 @@ namespace cppcoro
 		namespace linux
 		{
 			using fd_t = int;
-
-			enum message_type
-			{
-				CALLBACK_TYPE,
-				RESUME_TYPE
-			};
 
 			class safe_fd
 			{
@@ -78,35 +71,13 @@ namespace cppcoro
 				fd_t m_fd;
 			};
 
-			struct message
-			{
-				enum message_type m_type;
-				void* m_ptr;
-			};
-
-			struct io_state : linux::message
+			struct io_state
 			{
 				using callback_type = void(io_state* state);
 				callback_type* m_callback;
 				io_state(callback_type* callback) noexcept
 					: m_callback(callback)
 				{}
-			};
-
-			class message_queue
-			{
-			private:
-				int m_pipefd[2];
-				safe_fd m_epollfd;
-				struct epoll_event m_ev;
-
-			public:
-				message_queue();
-				~message_queue();
-				void add_fd_watch(int fd, void* cb, uint32_t events);
-				void remove_fd_watch(int fd);
-				bool enqueue_message(void* message, message_type type);
-				bool dequeue_message(void*& message, message_type& type, bool wait);
 			};
 
 			safe_fd create_event_fd();

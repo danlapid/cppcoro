@@ -13,6 +13,7 @@
 #include <optional>
 
 #include <cppcoro/detail/platform.hpp>
+#include <cppcoro/detail/async_operation.hpp>
 
 namespace cppcoro
 {
@@ -53,8 +54,8 @@ namespace cppcoro
  			std::uint64_t fileOffset,
  			void* buffer,
  			std::size_t byteCount,
-			detail::io_context_t ctx) noexcept
- 			: cppcoro::detail::async_operation<file_read_operation>(ctx)
+			io_service* ioService) noexcept
+ 			: cppcoro::detail::async_operation<file_read_operation>(ioService)
  			, m_impl(fileHandle, fileOffset, buffer, byteCount)
  		{}
 
@@ -78,10 +79,10 @@ namespace cppcoro
  			std::uint64_t fileOffset,
  			void* buffer,
  			std::size_t byteCount,
-			detail::io_context_t ctx,
+			io_service* ioService,
  			cancellation_token&& ct) noexcept
  			: cppcoro::detail::async_operation_cancellable<file_read_operation_cancellable>(
- 				ctx, std::move(ct))
+ 				ioService, std::move(ct))
  			, m_impl(fileHandle, fileOffset, buffer, byteCount)
  		{}
 

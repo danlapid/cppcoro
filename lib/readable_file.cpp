@@ -11,11 +11,11 @@ cppcoro::file_read_operation cppcoro::readable_file::read(
 	std::size_t byteCount) const noexcept
 {
 	return file_read_operation(
-		m_fileHandle.fileHandle.handle(),
+		m_fileHandle.handle(),
 		offset,
 		buffer,
 		byteCount,
-		m_fileHandle.ctx);
+		m_ioService);
 }
 
 cppcoro::file_read_operation_cancellable cppcoro::readable_file::read(
@@ -25,10 +25,10 @@ cppcoro::file_read_operation_cancellable cppcoro::readable_file::read(
 	cancellation_token ct) const noexcept
 {
 	return file_read_operation_cancellable(
-		m_fileHandle.fileHandle.handle(),
+		m_fileHandle.handle(),
 		offset,
 		buffer,
 		byteCount,
-		m_fileHandle.ctx,
+		m_ioService,
 		std::move(ct));
 }

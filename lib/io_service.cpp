@@ -24,6 +24,9 @@
 # include <mswsock.h>
 # include <windows.h>
 #elif CPPCORO_OS_LINUX
+# include <sys/epoll.h>
+# include <sys/timerfd.h>
+# include <unistd.h>
  typedef long long int LONGLONG;
  typedef int DWORD;
 # define INFINITE (DWORD)-1 //needed for timeout values in io_service::timer_thread_state::run()
@@ -32,22 +35,6 @@
 namespace
 {
 #if CPPCORO_OS_WINNT
-	cppcoro::detail::win32::safe_handle create_io_completion_port(std::uint32_t concurrencyHint)
-	{
-		HANDLE handle = ::CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, concurrencyHint);
-		if (handle == NULL)
-		{
-			DWORD errorCode = ::GetLastError();
-			throw std::system_error
-			{
-				static_cast<int>(errorCode),
-				std::system_category(),
-				"Error creating io_service: CreateIoCompletionPort"
-			};
-		}
-
-		return cppcoro::detail::win32::safe_handle{ handle };
-	}
 
 	cppcoro::detail::win32::safe_handle create_auto_reset_event()
 	{
@@ -340,13 +327,7 @@ cppcoro::io_service::io_service()
 cppcoro::io_service::io_service(std::uint32_t concurrencyHint)
 	: m_threadState(0)
 	, m_workCount(0)
-#if CPPCORO_OS_WINNT
-	, m_iocpHandle(create_io_completion_port(concurrencyHint))
-	, m_winsockInitialised(false)
-	, m_winsockInitialisationMutex()
-#elif CPPCORO_OS_LINUX
-	, m_mq()
-#endif
+	, m_mq(concurrencyHint)
 	, m_scheduleOperations(nullptr)
 	, m_timerState(nullptr)
 {
@@ -358,15 +339,6 @@ cppcoro::io_service::~io_service()
 	assert(m_threadState.load(std::memory_order_relaxed) < active_thread_count_increment);
 
 	delete m_timerState.load(std::memory_order_relaxed);
-
-#if CPPCORO_OS_WINNT
-	if (m_winsockInitialised.load(std::memory_order_relaxed))
-	{
-		// TODO: Should we be checking return-code here?
-		// Don't want to throw from the destructor, so perhaps just log an error?
-		(void)::WSACleanup();
-	}
-#endif
 }
 
 cppcoro::io_service::schedule_operation cppcoro::io_service::schedule() noexcept
@@ -482,53 +454,18 @@ void cppcoro::io_service::notify_work_finished() noexcept
 	}
 }
 
-cppcoro::detail::io_context_t cppcoro::io_service::get_io_context() noexcept
+cppcoro::detail::message_queue& cppcoro::io_service::get_io_context() noexcept
 {
-#if CPPCORO_OS_WINNT
-	return m_iocpHandle.handle();
-#elif CPPCORO_OS_LINUX
-	return &m_mq;
-#endif
+	return m_mq;
 }
-
-#if CPPCORO_OS_WINNT
-void cppcoro::io_service::ensure_winsock_initialised()
-{
-	if (!m_winsockInitialised.load(std::memory_order_acquire))
-	{
-		std::lock_guard<std::mutex> lock(m_winsockInitialisationMutex);
-		if (!m_winsockInitialised.load(std::memory_order_acquire))
-		{
-			const WORD requestedVersion = MAKEWORD(2, 2);
-			WSADATA winsockData;
-			const int result = ::WSAStartup(requestedVersion, &winsockData);
-			if (result == SOCKET_ERROR)
-			{
-				const int errorCode = ::WSAGetLastError();
-				throw std::system_error(
-					errorCode,
-					std::system_category(),
-					"Error initialsing winsock: WSAStartup");
-			}
-
-			m_winsockInitialised.store(true, std::memory_order_release);
-		}
-	}
-}
-#endif
 
 void cppcoro::io_service::schedule_impl(schedule_operation* operation) noexcept
 {
-#if CPPCORO_OS_WINNT
-	const BOOL ok = ::PostQueuedCompletionStatus(
-		m_iocpHandle.handle(),
-		0,
-		reinterpret_cast<ULONG_PTR>(operation->m_awaiter.address()),
-		nullptr);
-#elif CPPCORO_OS_LINUX
-	const bool ok = m_mq.enqueue_message(reinterpret_cast<void*>(operation->m_awaiter.address()),
-		detail::linux::RESUME_TYPE);
-#endif
+	const bool ok = m_mq.enqueue_message(
+		{
+			detail::message_type::RESUME_TYPE,
+			reinterpret_cast<void*>(operation->m_awaiter.address()),
+		});
 	if (!ok)
 	{
 		// Failed to post to the I/O completion port.
@@ -556,16 +493,10 @@ void cppcoro::io_service::try_reschedule_overflow_operations() noexcept
 	while (operation != nullptr)
 	{
 		auto* next = operation->m_next;
-#if CPPCORO_OS_WINNT
-		BOOL ok = ::PostQueuedCompletionStatus(
-			m_iocpHandle.handle(),
-			0,
-			reinterpret_cast<ULONG_PTR>(operation->m_awaiter.address()),
-			nullptr);
-#elif CPPCORO_OS_LINUX
- 		bool ok = m_mq.enqueue_message(reinterpret_cast<void*>(operation->m_awaiter.address()),
- 			detail::linux::RESUME_TYPE);
-#endif
+ 		bool ok = m_mq.enqueue_message({
+				detail::message_type::RESUME_TYPE,
+				reinterpret_cast<void*>(operation->m_awaiter.address()),
+			});
 		if (!ok)
 		{
 			// Still unable to queue these operations.
@@ -621,106 +552,33 @@ bool cppcoro::io_service::try_process_one_event(bool waitForEvent)
 	{
 		return false;
 	}
-
-#if CPPCORO_OS_WINNT
-	const DWORD timeout = waitForEvent ? INFINITE : 0;
-
-	while (true)
-	{
-		// Check for any schedule_operation objects that were unable to be
-		// queued to the I/O completion port and try to requeue them now.
-		try_reschedule_overflow_operations();
-
-		DWORD numberOfBytesTransferred = 0;
-		ULONG_PTR completionKey = 0;
-		LPOVERLAPPED overlapped = nullptr;
-		BOOL ok = ::GetQueuedCompletionStatus(
-			m_iocpHandle.handle(),
-			&numberOfBytesTransferred,
-			&completionKey,
-			&overlapped,
-			timeout);
-		if (overlapped != nullptr)
-		{
-			DWORD errorCode = ok ? ERROR_SUCCESS : ::GetLastError();
-
-			auto* state = static_cast<detail::win32::io_state*>(
-				reinterpret_cast<detail::win32::overlapped*>(overlapped));
-
-			state->m_callback(
-				state,
-				errorCode,
-				numberOfBytesTransferred,
-				completionKey);
-
-			return true;
-		}
-		else if (ok)
-		{
-			if (completionKey != 0)
-			{
-				// This was a coroutine scheduled via a call to
-				// io_service::schedule().
-				cppcoro::coroutine_handle<>::from_address(
-					reinterpret_cast<void*>(completionKey)).resume();
-				return true;
-			}
-
-			// Empty event is a wake-up request, typically associated with a
-			// request to exit the event loop.
-			// However, there may be spurious such events remaining in the queue
-			// from a previous call to stop() that has since been reset() so we
-			// need to check whether stop is still required.
-			if (is_stop_requested())
-			{
-				return false;
-			}
-		}
-		else
-		{
-			const DWORD errorCode = ::GetLastError();
-			if (errorCode == WAIT_TIMEOUT)
-			{
-				return false;
-			}
-
-			throw std::system_error
-			{
-				static_cast<int>(errorCode),
-				std::system_category(),
-				"Error retrieving item from io_service queue: GetQueuedCompletionStatus"
-			};
-		}
-	}
-#elif CPPCORO_OS_LINUX
  	while (true)
  	{
  		try_reschedule_overflow_operations();
- 		void* message = NULL;
- 		detail::linux::message_type type = detail::linux::RESUME_TYPE;
-
- 		bool ok = m_mq.dequeue_message(message, type, waitForEvent);
+		detail::message message;
+ 		bool ok = m_mq.dequeue_message(message, waitForEvent);
 
  		if (!ok)
  		{
  			return false;
  		}
 
- 		if (type == detail::linux::CALLBACK_TYPE)
+ 		if (message.type == detail::message_type::CALLBACK_TYPE)
  		{
- 			auto* state =
- 				static_cast<detail::linux
- 				::io_state*>(reinterpret_cast<detail::linux::io_state*>(message));
-
+#if CPPCORO_OS_WINNT
+ 			auto* state = static_cast<detail::win32::io_state*>(reinterpret_cast<detail::win32::io_state*>(message.data));
+#elif CPPCORO_OS_LINUX
+ 			auto* state = static_cast<detail::linux::io_state*>(reinterpret_cast<detail::linux::io_state*>(message.data));
+#endif
  			state->m_callback(state);
 
  			return true;
  		}
  		else
  		{
- 			if ((unsigned long long)message != 0)
+ 			if ((unsigned long long)message.data != 0)
  			{
- 				cppcoro::coroutine_handle<>::from_address(reinterpret_cast<void*>(message)).resume();
+ 				cppcoro::coroutine_handle<>::from_address(message.data).resume();
  				return true;
  			}
 
@@ -730,21 +588,16 @@ bool cppcoro::io_service::try_process_one_event(bool waitForEvent)
  			}
  		}
  	}
-#endif
 }
 
 void cppcoro::io_service::post_wake_up_event() noexcept
 {
-#if CPPCORO_OS_WINNT
 	// We intentionally ignore the return code here.
 	//
 	// Assume that if posting an event failed that it failed because the queue was full
 	// and the system is out of memory. In this case threads should find other events
 	// in the queue next time they check anyway and thus wake-up.
-	(void)::PostQueuedCompletionStatus(m_iocpHandle.handle(), 0, 0, nullptr);
-#elif CPPCORO_OS_LINUX
- 	(void)m_mq.enqueue_message(NULL, detail::linux::RESUME_TYPE);
-#endif
+ 	(void)m_mq.enqueue_message({detail::message_type::RESUME_TYPE, NULL});
 }
 
 cppcoro::io_service::timer_thread_state*

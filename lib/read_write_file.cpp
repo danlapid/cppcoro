@@ -34,10 +34,9 @@ cppcoro::read_write_file cppcoro::read_write_file::open(
 		bufferingMode));
 }
 
-cppcoro::read_write_file::read_write_file(
-	detail::safe_file_handle&& fileHandle) noexcept
-	: file(std::move(fileHandle))
-	, readable_file(detail::safe_file_handle{})
-	, writable_file(detail::safe_file_handle{})
+cppcoro::read_write_file::read_write_file(file&& other) noexcept
+	: file(std::move(other))
+	, readable_file(detail::safe_file_handle_t{}, NULL)
+	, writable_file(detail::safe_file_handle_t{}, NULL)
 {
 }

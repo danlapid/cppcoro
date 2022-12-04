@@ -42,6 +42,23 @@ bool cppcoro::file_read_operation_impl::try_start(
 
 		return false;
 	}
+	auto fileHandle = m_fileHandle;
+	auto* overlapped = operation.get_overlapped();
+	operation.m_completeFunc = [fileHandle, overlapped]() {
+		detail::win32::dword_t numberOfBytesTransferred = 0;
+		detail::win32::bool_t ok;
+		ok = GetOverlappedResult(
+			fileHandle,
+			overlapped,
+			&numberOfBytesTransferred,
+			0
+		);
+		if (ok) {
+			return numberOfBytesTransferred;
+		} else {
+			return -GetLastError();
+		}
+	};
 
 	return true;
 }
@@ -57,6 +74,7 @@ void cppcoro::file_read_operation_impl::cancel(
 }
 
 #elif CPPCORO_OS_LINUX
+#include <unistd.h>
 
 bool cppcoro::file_read_operation_impl::try_start(
 	cppcoro::detail::linux_async_operation_base& operation) noexcept
@@ -66,18 +84,18 @@ bool cppcoro::file_read_operation_impl::try_start(
 		operation.m_res = -errno;
 		return false;
 	}
-	operation.m_completeFunc = [=]() {
+	operation.m_completeFunc = [&]() {
 		int res = read(m_fileHandle, m_buffer, m_byteCount);
-		operation.m_ctx->remove_fd_watch(m_fileHandle);
+		operation.m_ioService->get_io_context().unwatch_handle(m_fileHandle);
 		return res;
 	};
-	operation.m_ctx->add_fd_watch(m_fileHandle, reinterpret_cast<void*>(&operation), EPOLLIN);
+	operation.m_ioService->get_io_context().watch_handle(m_fileHandle, reinterpret_cast<void*>(&operation), detail::watch_type::readable);
 	return true;
 }
 
 void cppcoro::file_read_operation_impl::cancel(
 	cppcoro::detail::linux_async_operation_base& operation) noexcept
 {
-	operation.m_ctx->remove_fd_watch(m_fileHandle);
+	operation.m_ioService->get_io_context().unwatch_handle(m_fileHandle);
 }
 #endif

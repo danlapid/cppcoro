@@ -46,6 +46,25 @@ bool cppcoro::net::socket_accept_operation_impl::try_start(
 			return false;
 		}
 	}
+	auto socketHandle = m_listeningSocket.native_handle();
+	auto* overlapped = operation.get_overlapped();
+	operation.m_completeFunc = [socketHandle, overlapped]() -> int64_t {
+		cppcoro::detail::win32::dword_t numberOfBytesTransferred = 0;
+		cppcoro::detail::win32::bool_t ok;
+		cppcoro::detail::win32::dword_t flags;
+		ok = WSAGetOverlappedResult(
+			socketHandle,
+			overlapped,
+			&numberOfBytesTransferred,
+			0,
+			&flags
+		);
+		if (ok) {
+			return numberOfBytesTransferred;
+		} else {
+			return -WSAGetLastError();
+		}
+	};
 
 	return true;
 }
@@ -132,20 +151,20 @@ bool cppcoro::net::socket_accept_operation_impl::try_start(
 		(sizeof(m_addressBuffer) / 2) >= (16 + sizeof(sockaddr_in6)),
 		"AcceptEx requires address buffer to be at least 16 bytes more than largest address.");
 
-	operation.m_completeFunc = [=]() {
+	operation.m_completeFunc = [&]() {
 		socklen_t len = sizeof(m_addressBuffer) / 2;
 		int res = accept(m_listeningSocket.native_handle(), reinterpret_cast<sockaddr*>(m_addressBuffer), &len);
-		operation.m_ctx->remove_fd_watch(m_listeningSocket.native_handle());
+		operation.m_ioService->get_io_context().unwatch_handle(m_listeningSocket.native_handle());
 		return res;
 	};
-	operation.m_ctx->add_fd_watch(m_listeningSocket.native_handle(), reinterpret_cast<void*>(&operation), EPOLLIN);
+	operation.m_ioService->get_io_context().watch_handle(m_listeningSocket.native_handle(), reinterpret_cast<void*>(&operation), cppcoro::detail::watch_type::readable);
 	return true;
 }
 
 void cppcoro::net::socket_accept_operation_impl::cancel(
 	cppcoro::detail::linux_async_operation_base& operation) noexcept
 {
-	operation.m_ctx->remove_fd_watch(m_listeningSocket.native_handle());
+	operation.m_ioService->get_io_context().unwatch_handle(m_listeningSocket.native_handle());
 }
 
 void cppcoro::net::socket_accept_operation_impl::get_result(
@@ -160,7 +179,7 @@ void cppcoro::net::socket_accept_operation_impl::get_result(
 		};
 	}
 
-	m_acceptingSocket = socket(operation.m_res, m_acceptingSocket.m_ctx);
+	m_acceptingSocket = socket(operation.m_res, m_acceptingSocket.m_ioService);
 	sockaddr* remoteSockaddr = reinterpret_cast<sockaddr*>(m_addressBuffer);
 	sockaddr* localSockaddr = reinterpret_cast<sockaddr*>(m_addressBuffer + sizeof(m_addressBuffer)/2);
 

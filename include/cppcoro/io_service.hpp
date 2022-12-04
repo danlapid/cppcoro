@@ -10,6 +10,7 @@
 #include <cppcoro/cancellation_registration.hpp>
 
 #include <cppcoro/detail/platform.hpp>
+#include <cppcoro/detail/message_queue.hpp>
 
 #include <optional>
 #include <chrono>
@@ -130,10 +131,7 @@ namespace cppcoro
 
 		void notify_work_finished() noexcept;
 
-		detail::io_context_t get_io_context() noexcept;
-#if CPPCORO_OS_WINNT
-		void ensure_winsock_initialised();
-#endif
+		detail::message_queue& get_io_context() noexcept;
 
 	private:
 
@@ -165,13 +163,7 @@ namespace cppcoro
 
 		std::atomic<std::uint32_t> m_workCount;
 
-#if CPPCORO_OS_WINNT
-		detail::win32::safe_handle m_iocpHandle;
-		std::atomic<bool> m_winsockInitialised;
-		std::mutex m_winsockInitialisationMutex;
-#elif CPPCORO_OS_LINUX
- 		detail::linux::message_queue m_mq;
-#endif
+ 		detail::message_queue m_mq;
 
 		// Head of a linked-list of schedule operations that are
 		// ready to run but that failed to be queued to the I/O

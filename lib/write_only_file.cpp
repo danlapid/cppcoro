@@ -34,9 +34,8 @@ cppcoro::write_only_file cppcoro::write_only_file::open(
 		bufferingMode));
 }
 
-cppcoro::write_only_file::write_only_file(
-	detail::safe_file_handle&& fileHandle) noexcept
-	: file(std::move(fileHandle))
-	, writable_file(detail::safe_file_handle{})
+cppcoro::write_only_file::write_only_file(file&& other) noexcept
+	: file(std::move(other))
+	, writable_file(detail::safe_file_handle_t{}, NULL)
 {
 }

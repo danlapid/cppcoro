@@ -6,9 +6,7 @@
 #define CPPCORO_PRIVATE_SOCKET_HELPERS_HPP_INCLUDED
 
 #include <functional>
-#include <cppcoro/config.hpp>
 
-#include <cppcoro/detail/platform.hpp>
 struct sockaddr;
 struct sockaddr_storage;
 

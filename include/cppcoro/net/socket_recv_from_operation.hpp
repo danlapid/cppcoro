@@ -13,6 +13,7 @@
 #include <tuple>
 
 #include <cppcoro/detail/platform.hpp>
+#include <cppcoro/detail/async_operation.hpp>
 
 namespace cppcoro::net
 {
@@ -67,8 +68,8 @@ namespace cppcoro::net
 			socket& socket,
 			void* buffer,
 			std::size_t byteCount,
-			cppcoro::detail::io_context_t ctx) noexcept
-			: cppcoro::detail::async_operation<socket_recv_from_operation>(ctx)
+			cppcoro::io_service* ioService) noexcept
+			: cppcoro::detail::async_operation<socket_recv_from_operation>(ioService)
 			, m_impl(socket, buffer, byteCount)
 		{}
 
@@ -92,9 +93,9 @@ namespace cppcoro::net
 			socket& socket,
 			void* buffer,
 			std::size_t byteCount,
-			cppcoro::detail::io_context_t ctx,
+			cppcoro::io_service* ioService,
 			cancellation_token&& ct) noexcept
-			: cppcoro::detail::async_operation_cancellable<socket_recv_from_operation_cancellable>(ctx, std::move(ct))
+			: cppcoro::detail::async_operation_cancellable<socket_recv_from_operation_cancellable>(ioService, std::move(ct))
 			, m_impl(socket, buffer, byteCount)
 		{}
 

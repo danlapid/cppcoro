@@ -235,14 +235,14 @@ namespace cppcoro
 
 			explicit socket(
 				cppcoro::detail::socket_handle_t handle,
-				cppcoro::detail::io_context_t ctx) noexcept;
+				cppcoro::io_service* ioService) noexcept;
 		private:
 
 			friend class socket_accept_operation_impl;
 			friend class socket_connect_operation_impl;
 
 			cppcoro::detail::socket_handle_t m_handle;
-			cppcoro::detail::io_context_t m_ctx;
+			cppcoro::io_service* m_ioService;
 
 			ip_endpoint m_localEndPoint;
 			ip_endpoint m_remoteEndPoint;

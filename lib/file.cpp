@@ -6,24 +6,31 @@
 #include <cppcoro/file.hpp>
 #include <cppcoro/io_service.hpp>
 
-#include <system_error>
 #include <cassert>
+#include <system_error>
 
 #if CPPCORO_OS_WINNT
-# ifndef WIN32_LEAN_AND_MEAN
-#  define WIN32_LEAN_AND_MEAN
-# endif
-# include <windows.h>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#elif CPPCORO_OS_LINUX
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 #endif
 
 cppcoro::file::~file()
-{}
+{
+	m_ioService->get_io_context().remove_handle(m_fileHandle.handle());
+}
 
 std::uint64_t cppcoro::file::size() const
 {
 #if CPPCORO_OS_WINNT
 	LARGE_INTEGER size;
-	BOOL ok = ::GetFileSizeEx(m_fileHandle.fileHandle.handle(), &size);
+	BOOL ok = ::GetFileSizeEx(m_fileHandle.handle(), &size);
 	if (!ok)
 	{
 		DWORD errorCode = ::GetLastError();
@@ -38,7 +45,7 @@ std::uint64_t cppcoro::file::size() const
 	return size.QuadPart;
 #elif CPPCORO_OS_LINUX
 	struct stat sb;
-	if (fstat(m_fileHandle.fileHandle.handle(), &sb) < 0)
+	if (fstat(m_fileHandle.handle(), &sb) < 0)
 	{
 		throw std::system_error
 		{
@@ -52,12 +59,15 @@ std::uint64_t cppcoro::file::size() const
 #endif
 }
 
-cppcoro::file::file(detail::safe_file_handle&& fileHandle) noexcept
+cppcoro::file::file(cppcoro::detail::safe_file_handle_t fileHandle, cppcoro::io_service* ioService)
 	: m_fileHandle(std::move(fileHandle))
-{}
+	, m_ioService(ioService)
+{
+}
+
 
 #if CPPCORO_OS_WINNT
-cppcoro::detail::safe_file_handle cppcoro::file::open(
+cppcoro::file cppcoro::file::open(
 	int fileAccess,
 	io_service& ioService,
 	const cppcoro::filesystem::path& path,
@@ -143,32 +153,17 @@ cppcoro::detail::safe_file_handle cppcoro::file::open(
 	}
 
 	// Associate with the I/O service's completion port.
-	const HANDLE result = ::CreateIoCompletionPort(
-		fileHandle.handle(),
-		ioService.get_io_context(),
-		0,
-		0);
-	if (result == nullptr)
-	{
-		const DWORD errorCode = ::GetLastError();
-		throw std::system_error
-		{
-			static_cast<int>(errorCode),
-			std::system_category(),
-			"error opening file: CreateIoCompletionPort"
-		};
-	}
+	ioService.get_io_context().add_handle(fileHandle.handle());
 
-	return {std::move(fileHandle), ioService.get_io_context()};
+	return {std::move(fileHandle), &ioService};
 }
 
 #elif CPPCORO_OS_LINUX
 
-
-cppcoro::detail::safe_file_handle cppcoro::file::open(
+cppcoro::file cppcoro::file::open(
 	int fileAccess,
-	io_service &ioService,
-	const std::filesystem::path &path,
+	io_service& ioService,
+	const std::filesystem::path& path,
 	cppcoro::file_open_mode openMode,
 	cppcoro::file_share_mode shareMode,
 	cppcoro::file_buffering_mode bufferingMode)
@@ -230,6 +225,7 @@ cppcoro::detail::safe_file_handle cppcoro::file::open(
 
 	//posix_fadvise(fd.get(), 0, 0, advice);
 
-	return {std::move(fd), ioService.get_io_context()};
+	ioService.get_io_context().add_handle(fd.handle());
+	return {std::move(fd), &ioService};
 }
 #endif

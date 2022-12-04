@@ -33,9 +33,8 @@ cppcoro::read_only_file cppcoro::read_only_file::open(
 		bufferingMode));
 }
 
-cppcoro::read_only_file::read_only_file(
-	detail::safe_file_handle&& fileHandle) noexcept
-	: file(std::move(fileHandle))
-	, readable_file(detail::safe_file_handle{})
+cppcoro::read_only_file::read_only_file(file&& other) noexcept
+	: file(std::move(other))
+	, readable_file(detail::safe_file_handle_t{}, NULL)
 {
 }

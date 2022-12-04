@@ -19,7 +19,7 @@ void cppcoro::writable_file::set_size(
 	LARGE_INTEGER position;
 	position.QuadPart = fileSize;
 
-	BOOL ok = ::SetFilePointerEx(m_fileHandle.fileHandle.handle(), position, nullptr, FILE_BEGIN);
+	BOOL ok = ::SetFilePointerEx(m_fileHandle.handle(), position, nullptr, FILE_BEGIN);
 	if (!ok)
 	{
 		DWORD errorCode = ::GetLastError();
@@ -31,7 +31,7 @@ void cppcoro::writable_file::set_size(
 		};
 	}
 
-	ok = ::SetEndOfFile(m_fileHandle.fileHandle.handle());
+	ok = ::SetEndOfFile(m_fileHandle.handle());
 	if (!ok)
 	{
 		DWORD errorCode = ::GetLastError();
@@ -49,7 +49,7 @@ void cppcoro::writable_file::set_size(
 void cppcoro::writable_file::set_size(
 	std::uint64_t fileSize)
 {
-	if (ftruncate64(m_fileHandle.fileHandle.handle(), fileSize) < 0)
+	if (ftruncate64(m_fileHandle.handle(), fileSize) < 0)
 	{
 		throw std::system_error
 		{
@@ -67,11 +67,11 @@ cppcoro::file_write_operation cppcoro::writable_file::write(
 	std::size_t byteCount) noexcept
 {
 	return file_write_operation{
-		m_fileHandle.fileHandle.handle(),
+		m_fileHandle.handle(),
 		offset,
 		buffer,
 		byteCount,
-		m_fileHandle.ctx
+		m_ioService
 	};
 }
 
@@ -82,11 +82,11 @@ cppcoro::file_write_operation_cancellable cppcoro::writable_file::write(
 	cancellation_token ct) noexcept
 {
 	return file_write_operation_cancellable{
-		m_fileHandle.fileHandle.handle(),
+		m_fileHandle.handle(),
 		offset,
 		buffer,
 		byteCount,
-		m_fileHandle.ctx,
+		m_ioService,
 		std::move(ct)
 	};
 }

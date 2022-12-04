@@ -28,6 +28,7 @@ namespace cppcoro
 			using dword_t = unsigned long;
 			using socket_t = std::uintptr_t;
 			using ulong_t = unsigned long;
+			using bool_t = int;
 
 #if CPPCORO_COMPILER_MSVC
 # pragma warning(push)
@@ -74,11 +75,7 @@ namespace cppcoro
 
 			struct io_state : win32::overlapped
 			{
-				using callback_type = void(
-					io_state* state,
-					win32::dword_t errorCode,
-					win32::dword_t numberOfBytesTransferred,
-					win32::ulongptr_t completionKey);
+				using callback_type = void(io_state* state);
 
 				io_state(callback_type* callback = nullptr) noexcept
 					: m_callback(callback)

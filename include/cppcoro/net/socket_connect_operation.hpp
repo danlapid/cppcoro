@@ -10,6 +10,7 @@
 #include <cppcoro/net/ip_endpoint.hpp>
 
 #include <cppcoro/detail/platform.hpp>
+#include <cppcoro/detail/async_operation.hpp>
 
 namespace cppcoro
 {
@@ -47,8 +48,8 @@ namespace cppcoro
 			socket_connect_operation(
 				socket& socket,
 				const ip_endpoint& remoteEndPoint,
-				cppcoro::detail::io_context_t ctx) noexcept
-				: cppcoro::detail::async_operation<socket_connect_operation>(ctx)
+				cppcoro::io_service* ioService) noexcept
+				: cppcoro::detail::async_operation<socket_connect_operation>(ioService)
 				, m_impl(socket, remoteEndPoint)
 			{}
 
@@ -71,9 +72,9 @@ namespace cppcoro
 			socket_connect_operation_cancellable(
 				socket& socket,
 				const ip_endpoint& remoteEndPoint,
-				cppcoro::detail::io_context_t ctx,
+				cppcoro::io_service* ioService,
 				cancellation_token&& ct) noexcept
-				: cppcoro::detail::async_operation_cancellable<socket_connect_operation_cancellable>(ctx, std::move(ct))
+				: cppcoro::detail::async_operation_cancellable<socket_connect_operation_cancellable>(ioService, std::move(ct))
 				, m_impl(socket, remoteEndPoint)
 			{}
 

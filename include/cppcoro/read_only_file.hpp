@@ -48,7 +48,7 @@ namespace cppcoro
 			file_buffering_mode bufferingMode = file_buffering_mode::default_);
 
 	protected:
-		read_only_file(detail::safe_file_handle&& fileHandle) noexcept;
+		read_only_file(file&& other) noexcept;
 
 	};
 }

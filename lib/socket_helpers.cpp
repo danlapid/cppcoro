@@ -3,12 +3,13 @@
 // Licenced under MIT license. See LICENSE.txt for details.
 ///////////////////////////////////////////////////////////////////////////////
 
-#include <functional>
 
+#include <cppcoro/config.hpp>
 #include "socket_helpers.hpp"
 
 #include <cppcoro/net/ip_endpoint.hpp>
 
+#include <functional>
 #include <cstring>
 #include <cassert>
 #if CPPCORO_OS_WINNT
