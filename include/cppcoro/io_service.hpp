@@ -134,9 +134,10 @@ namespace cppcoro
 		detail::message_queue& get_io_context() noexcept;
 
 	private:
-
+#if CPPCORO_OS_WINNT
 		class timer_thread_state;
 		class timer_queue;
+#endif
 
 		friend class schedule_operation;
 		friend class timed_schedule_operation;
@@ -152,7 +153,9 @@ namespace cppcoro
 
 		void post_wake_up_event() noexcept;
 
+#if CPPCORO_OS_WINNT
 		timer_thread_state* ensure_timer_thread_started();
+#endif
 
 		static constexpr std::uint32_t stop_requested_flag = 1;
 		static constexpr std::uint32_t active_thread_count_increment = 2;
@@ -170,8 +173,9 @@ namespace cppcoro
 		// completion port (eg. due to low memory).
 		std::atomic<schedule_operation*> m_scheduleOperations;
 
+#if CPPCORO_OS_WINNT
 		std::atomic<timer_thread_state*> m_timerState;
-
+#endif
 	};
 
 	class io_service::schedule_operation
@@ -197,6 +201,7 @@ namespace cppcoro
 
 	};
 
+#if CPPCORO_OS_WINNT
 	class io_service::timed_schedule_operation
 	{
 	public:
@@ -234,6 +239,47 @@ namespace cppcoro
 		std::atomic<std::uint32_t> m_refCount;
 
 	};
+
+#elif CPPCORO_OS_LINUX
+	class io_service::timed_schedule_operation : public detail::io_state
+	{
+	public:
+
+		timed_schedule_operation(
+			io_service& service,
+			std::chrono::high_resolution_clock::time_point resumeTime,
+			cppcoro::cancellation_token cancellationToken) noexcept;
+
+		timed_schedule_operation(timed_schedule_operation&& other) noexcept;
+
+		timed_schedule_operation& operator=(timed_schedule_operation&& other) = delete;
+		timed_schedule_operation(const timed_schedule_operation& other) = delete;
+		timed_schedule_operation& operator=(const timed_schedule_operation& other) = delete;
+
+		bool await_ready() const noexcept;
+		void await_suspend(cppcoro::coroutine_handle<> awaiter);
+		void await_resume();
+
+	private:
+		enum class state
+		{
+			not_started,
+			started,
+			cancelled,
+			completed
+		};
+
+		io_service::schedule_operation m_scheduleOperation;
+		std::chrono::high_resolution_clock::time_point m_resumeTime;
+
+		std::atomic<state> m_state;
+		cppcoro::cancellation_token m_cancellationToken;
+		std::optional<cppcoro::cancellation_registration> m_cancellationCallback;
+	 	detail::safe_file_handle_t m_timerfd;
+		void on_cancellation_requested() noexcept;
+		static void on_operation_completed(detail::io_state* ioState) noexcept;
+	};
+#endif
 
 	class io_work_scope
 	{

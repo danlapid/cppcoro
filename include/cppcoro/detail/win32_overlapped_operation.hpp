@@ -22,14 +22,14 @@ namespace cppcoro
 	namespace detail
 	{
 		class win32_overlapped_operation_base
-			: protected detail::win32::io_state
+			: protected detail::io_state
 		{
 		public:
 
 			win32_overlapped_operation_base(
-				detail::win32::io_state::callback_type* callback,
+				detail::io_state::callback_type* callback,
 				io_service* ioService) noexcept
-				: detail::win32::io_state(callback)
+				: detail::io_state(callback)
 				, m_ioService(ioService)
 				, m_errorCode(0)
 				, m_numberOfBytesTransferred(0)
@@ -103,7 +103,7 @@ namespace cppcoro
 
 		private:
 
-			static void on_operation_completed(detail::win32::io_state* ioState) noexcept
+			static void on_operation_completed(detail::io_state* ioState) noexcept
 			{
 				auto* operation = static_cast<win32_overlapped_operation*>(ioState);
 				operation->on_operation_completed_base();
@@ -293,7 +293,7 @@ namespace cppcoro
 				}
 			}
 
-			static void on_operation_completed(detail::win32::io_state* ioState) noexcept
+			static void on_operation_completed(detail::io_state* ioState) noexcept
 			{
 				auto* operation = static_cast<win32_overlapped_operation_cancellable*>(ioState);
 				operation->on_operation_completed_base();

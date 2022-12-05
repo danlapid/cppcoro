@@ -22,14 +22,14 @@ namespace cppcoro
 	namespace detail
 	{
 		class linux_async_operation_base
-			: protected detail::linux::io_state
+			: protected detail::io_state
 		{
 		public:
 
 			linux_async_operation_base(
-				detail::linux::io_state::callback_type* callback,
+				detail::io_state::callback_type* callback,
 				io_service* ioService) noexcept
-				: detail::linux::io_state(callback)
+				: detail::io_state(callback)
 				, m_ioService(ioService)
 			{}
 
@@ -91,7 +91,7 @@ namespace cppcoro
 		private:
 
 			static void on_operation_completed(
-				detail::linux::io_state* ioState) noexcept
+				detail::io_state* ioState) noexcept
 			{
 				auto* operation = static_cast<linux_async_operation*>(ioState);
 				operation->on_operation_completed_base();
@@ -284,7 +284,7 @@ namespace cppcoro
 			}
 
 			static void on_operation_completed(
-				detail::linux::io_state* ioState) noexcept
+				detail::io_state* ioState) noexcept
 			{
 				auto* operation = static_cast<linux_async_operation_cancellable*>(ioState);
 				operation->on_operation_completed_base();

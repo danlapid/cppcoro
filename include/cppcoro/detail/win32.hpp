@@ -157,6 +157,9 @@ namespace cppcoro
 				handle_t m_handle;
 
 			};
+
+			safe_handle create_waitable_timer_event();
+			safe_handle create_auto_reset_event();
 		}
 	}
 }
