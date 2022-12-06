@@ -5,6 +5,7 @@
 
 #include <cppcoro/net/socket_recv_from_operation.hpp>
 #include <cppcoro/net/socket.hpp>
+#include <cppcoro/io_service.hpp>
 
 # include "socket_helpers.hpp"
 
@@ -15,8 +16,9 @@
 # include <windows.h>
 
 bool cppcoro::net::socket_recv_from_operation_impl::try_start(
-	cppcoro::detail::win32_overlapped_operation_base& operation) noexcept
+	cppcoro::detail::async_operation_base& operation) noexcept
 {
+	operation.m_ioState.m_handle = reinterpret_cast<HANDLE>(m_socket.native_handle());
 	static_assert(
 		sizeof(m_sourceSockaddrStorage) >= sizeof(SOCKADDR_IN) &&
 		sizeof(m_sourceSockaddrStorage) >= sizeof(SOCKADDR_IN6));
@@ -36,7 +38,7 @@ bool cppcoro::net::socket_recv_from_operation_impl::try_start(
 		&flags,
 		reinterpret_cast<sockaddr*>(&m_sourceSockaddrStorage),
 		&m_sourceSockaddrLength,
-		operation.get_overlapped(),
+		operation.m_ioState.get_overlapped(),
 		nullptr);
 	if (result == SOCKET_ERROR)
 	{
@@ -44,20 +46,18 @@ bool cppcoro::net::socket_recv_from_operation_impl::try_start(
 		if (errorCode != WSA_IO_PENDING)
 		{
 			// Failed synchronously.
-			operation.m_errorCode = static_cast<DWORD>(errorCode);
-			operation.m_numberOfBytesTransferred = numberOfBytesReceived;
+			operation.m_ioState.m_errorCode = static_cast<DWORD>(errorCode);
+			operation.m_ioState.m_numberOfBytesTransferred = numberOfBytesReceived;
 			return false;
 		}
 	}
-	auto socketHandle = m_socket.native_handle();
-	auto* overlapped = operation.get_overlapped();
-	operation.m_completeFunc = [socketHandle, overlapped]() -> int64_t {
+	operation.m_ioState.m_completeFunc = [&]() -> int64_t {
 		cppcoro::detail::win32::dword_t numberOfBytesTransferred = 0;
 		cppcoro::detail::win32::bool_t ok;
 		cppcoro::detail::win32::dword_t flags;
 		ok = WSAGetOverlappedResult(
-			socketHandle,
-			overlapped,
+			m_socket.native_handle(),
+			operation.m_ioState.get_overlapped(),
 			&numberOfBytesTransferred,
 			0,
 			&flags
@@ -73,33 +73,20 @@ bool cppcoro::net::socket_recv_from_operation_impl::try_start(
 	return true;
 }
 
-void cppcoro::net::socket_recv_from_operation_impl::cancel(
-	cppcoro::detail::win32_overlapped_operation_base& operation) noexcept
-{
-#if CPPCORO_OS_WINNT >= 0x600
-	(void)::CancelIoEx(
-		reinterpret_cast<HANDLE>(m_socket.native_handle()),
-		operation.get_overlapped());
-#else
-	(void)::CancelIo(
-		reinterpret_cast<HANDLE>(m_socket.native_handle()));
-#endif
-}
-
 std::tuple<std::size_t, cppcoro::net::ip_endpoint>
 cppcoro::net::socket_recv_from_operation_impl::get_result(
-	cppcoro::detail::win32_overlapped_operation_base& operation)
+	cppcoro::detail::async_operation_base& operation)
 {
-	if (operation.m_errorCode != ERROR_SUCCESS)
+	if (operation.m_ioState.m_errorCode != ERROR_SUCCESS)
 	{
 		throw std::system_error(
-			static_cast<int>(operation.m_errorCode),
+			static_cast<int>(operation.m_ioState.m_errorCode),
 			std::system_category(),
 			"Error receiving message on socket: WSARecvFrom");
 	}
 
 	return std::make_tuple(
-		static_cast<std::size_t>(operation.m_numberOfBytesTransferred),
+		static_cast<std::size_t>(operation.m_ioState.m_numberOfBytesTransferred),
 		detail::sockaddr_to_ip_endpoint(
 			*reinterpret_cast<SOCKADDR*>(&m_sourceSockaddrStorage)));
 }
@@ -110,8 +97,9 @@ cppcoro::net::socket_recv_from_operation_impl::get_result(
 # include <netinet/tcp.h>
 # include <netinet/udp.h>
 bool cppcoro::net::socket_recv_from_operation_impl::try_start(
-	cppcoro::detail::linux_async_operation_base& operation) noexcept
+	cppcoro::detail::async_operation_base& operation) noexcept
 {
+	operation.m_ioState.m_fd = m_socket.native_handle();
 	static_assert(
 		sizeof(m_sourceSockaddrStorage) >= sizeof(sockaddr_in) &&
 		sizeof(m_sourceSockaddrStorage) >= sizeof(sockaddr_in6));
@@ -120,37 +108,29 @@ bool cppcoro::net::socket_recv_from_operation_impl::try_start(
 		sockaddrStorageAlignment >= alignof(sockaddr_in6));
 	m_sourceSockaddrLength = sizeof(m_sourceSockaddrStorage);
 
-	operation.m_completeFunc = [&]() {
-		int res = recvfrom(
+	operation.m_ioState.m_completeFunc = [&]() {
+		return recvfrom(
 			m_socket.native_handle(), m_buffer, m_byteCount, MSG_TRUNC,
 			reinterpret_cast<sockaddr*>(&m_sourceSockaddrStorage),
 			reinterpret_cast<socklen_t*>(&m_sourceSockaddrLength)
 		);
-		operation.m_ioService->get_io_context().unwatch_handle(m_socket.native_handle());
-		return res;
 	};
-	operation.m_ioService->get_io_context().watch_handle(m_socket.native_handle(), reinterpret_cast<void*>(&operation), cppcoro::detail::watch_type::readable);
+	operation.m_ioState.m_ioService->get_io_context().watch_handle(m_socket.native_handle(), reinterpret_cast<void*>(&operation), cppcoro::detail::watch_type::readable);
 	return true;
-}
-
-void cppcoro::net::socket_recv_from_operation_impl::cancel(
-	cppcoro::detail::linux_async_operation_base& operation) noexcept
-{
-	operation.m_ioService->get_io_context().unwatch_handle(m_socket.native_handle());
 }
 
 std::tuple<std::size_t, cppcoro::net::ip_endpoint>
 cppcoro::net::socket_recv_from_operation_impl::get_result(
-	cppcoro::detail::linux_async_operation_base& operation)
+	cppcoro::detail::async_operation_base& operation)
 {
-	if (operation.m_res < 0)
+	if (operation.m_ioState.m_res < 0)
 	{
 		throw std::system_error(
-			static_cast<int>(-operation.m_res),
+			static_cast<int>(-operation.m_ioState.m_res),
 			std::system_category(),
 			"Error receiving message on socket: recvfrom");
 	}
-	if (operation.m_res > m_byteCount) {
+	if (operation.m_ioState.m_res > m_byteCount) {
 		throw std::system_error(
 			ENOMEM,
 			std::system_category(),
@@ -159,7 +139,7 @@ cppcoro::net::socket_recv_from_operation_impl::get_result(
 	}
 
 	return std::make_tuple(
-		static_cast<std::size_t>(operation.m_res),
+		static_cast<std::size_t>(operation.m_ioState.m_res),
 		detail::sockaddr_to_ip_endpoint(
 			*reinterpret_cast<sockaddr*>(&m_sourceSockaddrStorage)));
 }

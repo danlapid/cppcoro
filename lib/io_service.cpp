@@ -6,6 +6,7 @@
 #include <cppcoro/io_service.hpp>
 #include <cppcoro/on_scope_exit.hpp>
 #include <cppcoro/operation_cancelled.hpp>
+#include <cppcoro/detail/async_operation.hpp>
 
 #include <system_error>
 #include <cassert>
@@ -523,13 +524,13 @@ bool cppcoro::io_service::try_process_one_event(bool waitForEvent)
 
  		if (message.type == detail::message_type::CALLBACK_TYPE)
  		{
- 			auto* state = static_cast<detail::io_state*>(message.data);
+ 			auto* state = static_cast<detail::async_operation_base*>(message.data);
  			state->m_callback(state);
  			return true;
  		}
  		else
  		{
- 			if ((unsigned long long)message.data != 0)
+ 			if (message.data != nullptr)
  			{
  				cppcoro::coroutine_handle<>::from_address(message.data).resume();
  				return true;
@@ -906,7 +907,7 @@ cppcoro::io_service::timed_schedule_operation::timed_schedule_operation(
 	, m_cancellationToken(std::move(cancellationToken))
  	, m_timerfd(detail::linux::create_timer_fd())
 	, m_state(cancellationToken.is_cancellation_requested() ? state::completed : state::not_started)
-	, detail::io_state(on_operation_completed)
+	, m_callback(on_operation_completed)
 {
 }
 
@@ -917,7 +918,7 @@ cppcoro::io_service::timed_schedule_operation::timed_schedule_operation(
 	, m_cancellationToken(std::move(other.m_cancellationToken))
  	, m_timerfd(std::move(other.m_timerfd))
 	, m_state(other.m_state.load(std::memory_order_relaxed))
-	, detail::io_state(on_operation_completed)
+	, m_callback(on_operation_completed)
 {
 }
 
@@ -993,13 +994,10 @@ void cppcoro::io_service::timed_schedule_operation::on_cancellation_requested() 
 }
 
 void cppcoro::io_service::timed_schedule_operation::on_operation_completed(
-	detail::io_state* ioState) noexcept {
-	auto* operation = static_cast<timed_schedule_operation*>(ioState);
-	auto& m_state = operation->m_state;
-
+	timed_schedule_operation* operation) noexcept {
 	auto oldState = state::started;
 	const bool marked_as_completed =
-		m_state.compare_exchange_strong(
+		operation->m_state.compare_exchange_strong(
 			oldState,
 			state::completed,
 			std::memory_order_release,

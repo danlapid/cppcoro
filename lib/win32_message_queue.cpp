@@ -3,6 +3,7 @@
 // Licenced under MIT license. See LICENSE.txt for details.
 ///////////////////////////////////////////////////////////////////////////////
 #include <cppcoro/detail/message_queue.hpp>
+#include <cppcoro/detail/platform.hpp>
 #include <cassert>
 #include <cstring>
 #include <system_error>
@@ -98,8 +99,9 @@ namespace cppcoro
 				m_pollfd.handle(), &numberOfBytesTransferred, &completionKey, &overlapped, timeout);
 			if (overlapped != nullptr)
 			{
+				auto* operation = reinterpret_cast<io_state*>(overlapped)->operation;
 				msg.type = message_type::CALLBACK_TYPE;
-				msg.data = reinterpret_cast<void*>(overlapped);
+				msg.data = static_cast<void*>(operation);
 				return true;
 			}
 			else if (ok)

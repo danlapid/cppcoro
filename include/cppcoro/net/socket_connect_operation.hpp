@@ -56,6 +56,7 @@ namespace cppcoro
 		private:
 
 			friend class cppcoro::detail::async_operation<socket_connect_operation>;
+			friend class cppcoro::detail::has_get_result<socket_connect_operation>;
 
 			bool try_start() noexcept { return m_impl.try_start(*this); }
 			decltype(auto) get_result() { return m_impl.get_result(*this); }
@@ -81,10 +82,10 @@ namespace cppcoro
 		private:
 
 			friend class cppcoro::detail::async_operation_cancellable<socket_connect_operation_cancellable>;
+			friend class cppcoro::detail::has_get_result<socket_connect_operation_cancellable>;
 
 			bool try_start() noexcept { return m_impl.try_start(*this); }
-			void cancel() noexcept { m_impl.cancel(*this); }
-			void get_result() { m_impl.get_result(*this); }
+			decltype(auto) get_result() { return m_impl.get_result(*this); }
 
 			socket_connect_operation_impl m_impl;
 

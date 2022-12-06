@@ -142,7 +142,6 @@ set(socketNetSources
 if(WIN32)
 	set(win32DetailIncludes
 		win32.hpp
-		win32_overlapped_operation.hpp
 	)
 	list(TRANSFORM win32DetailIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/detail/")
 	list(APPEND detailIncludes ${win32DetailIncludes})
@@ -167,7 +166,6 @@ if(WIN32)
 elseif(CMAKE_SYSTEM_NAME MATCHES "Linux")
 	set(linuxDetailIncludes
 		linux.hpp
-		linux_async_operation.hpp
 	)
 	list(TRANSFORM linuxDetailIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/detail/")
 	list(APPEND detailIncludes ${linuxDetailIncludes})

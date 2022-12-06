@@ -241,7 +241,7 @@ namespace cppcoro
 	};
 
 #elif CPPCORO_OS_LINUX
-	class io_service::timed_schedule_operation : public detail::io_state
+	class io_service::timed_schedule_operation
 	{
 	public:
 
@@ -268,7 +268,8 @@ namespace cppcoro
 			cancelled,
 			completed
 		};
-
+		using callback_type = void(timed_schedule_operation* operation);
+		callback_type* m_callback;
 		io_service::schedule_operation m_scheduleOperation;
 		std::chrono::high_resolution_clock::time_point m_resumeTime;
 
@@ -277,7 +278,7 @@ namespace cppcoro
 		std::optional<cppcoro::cancellation_registration> m_cancellationCallback;
 	 	detail::safe_file_handle_t m_timerfd;
 		void on_cancellation_requested() noexcept;
-		static void on_operation_completed(detail::io_state* ioState) noexcept;
+		static void on_operation_completed(timed_schedule_operation* operation) noexcept;
 	};
 #endif
 

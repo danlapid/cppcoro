@@ -5,6 +5,7 @@
 
 #include <cppcoro/net/socket_connect_operation.hpp>
 #include <cppcoro/net/socket.hpp>
+#include <cppcoro/io_service.hpp>
 
 #include <cppcoro/operation_cancelled.hpp>
 
@@ -20,8 +21,9 @@
 # include <windows.h>
 
 bool cppcoro::net::socket_connect_operation_impl::try_start(
-	cppcoro::detail::win32_overlapped_operation_base& operation) noexcept
+	cppcoro::detail::async_operation_base& operation) noexcept
 {
+	operation.m_ioState.m_handle = reinterpret_cast<HANDLE>(m_socket.native_handle());
 	// Lookup the address of the ConnectEx function pointer for this socket.
 	LPFN_CONNECTEX connectExPtr;
 	{
@@ -39,7 +41,7 @@ bool cppcoro::net::socket_connect_operation_impl::try_start(
 			nullptr);
 		if (result == SOCKET_ERROR)
 		{
-			operation.m_errorCode = ::WSAGetLastError();
+			operation.m_ioState.m_errorCode = ::WSAGetLastError();
 			return false;
 		}
 	}
@@ -57,26 +59,24 @@ bool cppcoro::net::socket_connect_operation_impl::try_start(
 		nullptr, // send buffer
 		0, // size of send buffer
 		&bytesSent,
-		operation.get_overlapped());
+		operation.m_ioState.get_overlapped());
 	if (!ok)
 	{
 		const int errorCode = ::WSAGetLastError();
 		if (errorCode != ERROR_IO_PENDING)
 		{
 			// Failed synchronously.
-			operation.m_errorCode = static_cast<DWORD>(errorCode);
+			operation.m_ioState.m_errorCode = static_cast<DWORD>(errorCode);
 			return false;
 		}
 	}
-	auto socketHandle = m_socket.native_handle();
-	auto* overlapped = operation.get_overlapped();
-	operation.m_completeFunc = [socketHandle, overlapped]() -> int64_t {
+	operation.m_ioState.m_completeFunc = [&]() -> int64_t {
 		cppcoro::detail::win32::dword_t numberOfBytesTransferred = 0;
 		cppcoro::detail::win32::bool_t ok;
 		cppcoro::detail::win32::dword_t flags;
 		ok = WSAGetOverlappedResult(
-			socketHandle,
-			overlapped,
+			m_socket.native_handle(),
+			operation.m_ioState.get_overlapped(),
 			&numberOfBytesTransferred,
 			0,
 			&flags
@@ -91,31 +91,18 @@ bool cppcoro::net::socket_connect_operation_impl::try_start(
 	return true;
 }
 
-void cppcoro::net::socket_connect_operation_impl::cancel(
-	cppcoro::detail::win32_overlapped_operation_base& operation) noexcept
-{
-#if CPPCORO_OS_WINNT >= 0x600
-	(void)::CancelIoEx(
-		reinterpret_cast<HANDLE>(m_socket.native_handle()),
-		operation.get_overlapped());
-#else
-	(void)::CancelIo(
-		reinterpret_cast<HANDLE>(m_socket.native_handle()));
-#endif
-}
-
 void cppcoro::net::socket_connect_operation_impl::get_result(
-	cppcoro::detail::win32_overlapped_operation_base& operation)
+	cppcoro::detail::async_operation_base& operation)
 {
-	if (operation.m_errorCode != ERROR_SUCCESS)
+	if (operation.m_ioState.m_errorCode != ERROR_SUCCESS)
 	{
-		if (operation.m_errorCode == ERROR_OPERATION_ABORTED)
+		if (operation.m_ioState.m_errorCode == ERROR_OPERATION_ABORTED)
 		{
 			throw operation_cancelled{};
 		}
 
 		throw std::system_error{
-			static_cast<int>(operation.m_errorCode),
+			static_cast<int>(operation.m_ioState.m_errorCode),
 			std::system_category(),
 			"Connect operation failed: ConnectEx"
 		};
@@ -192,9 +179,9 @@ void cppcoro::net::socket_connect_operation_impl::get_result(
 # include <netinet/udp.h>
 
 bool cppcoro::net::socket_connect_operation_impl::try_start(
-	cppcoro::detail::linux_async_operation_base& operation) noexcept
+	cppcoro::detail::async_operation_base& operation) noexcept
 {
-
+	operation.m_ioState.m_fd = m_socket.native_handle();
 	sockaddr_storage remoteSockaddrStorage {0};
 	const socklen_t sockaddrNameLength = cppcoro::net::detail::ip_endpoint_to_sockaddr(
 		m_remoteEndPoint,
@@ -202,36 +189,28 @@ bool cppcoro::net::socket_connect_operation_impl::try_start(
 
 	int res = connect(m_socket.native_handle(), reinterpret_cast<const sockaddr*>(&remoteSockaddrStorage), sockaddrNameLength);
 	if (res < 0 && errno != EINPROGRESS){
-		operation.m_res = -errno;
+		operation.m_ioState.m_res = -errno;
 		return false;
 	}
-	operation.m_completeFunc = [&, remoteSockaddrStorage, sockaddrNameLength]() {
-		int res = connect(m_socket.native_handle(), reinterpret_cast<const sockaddr*>(&remoteSockaddrStorage), sockaddrNameLength);
-		operation.m_ioService->get_io_context().unwatch_handle(m_socket.native_handle());
-		return res;
+	operation.m_ioState.m_completeFunc = [&, remoteSockaddrStorage, sockaddrNameLength]() {
+		return connect(m_socket.native_handle(), reinterpret_cast<const sockaddr*>(&remoteSockaddrStorage), sockaddrNameLength);
 	};
-	operation.m_ioService->get_io_context().watch_handle(m_socket.native_handle(), reinterpret_cast<void*>(&operation), cppcoro::detail::watch_type::writable);
+	operation.m_ioState.m_ioService->get_io_context().watch_handle(m_socket.native_handle(), reinterpret_cast<void*>(&operation), cppcoro::detail::watch_type::writable);
 	return true;
 }
 
-void cppcoro::net::socket_connect_operation_impl::cancel(
-	cppcoro::detail::linux_async_operation_base& operation) noexcept
-{
-	operation.m_ioService->get_io_context().unwatch_handle(m_socket.native_handle());
-}
-
 void cppcoro::net::socket_connect_operation_impl::get_result(
-	cppcoro::detail::linux_async_operation_base& operation)
+	cppcoro::detail::async_operation_base& operation)
 {
-	if (operation.m_res < 0)
+	if (operation.m_ioState.m_res < 0)
 	{
-		if (operation.m_res == -cppcoro::detail::error_operation_cancelled)
+		if (operation.m_ioState.m_res == -ECANCELED)
 		{
 			throw operation_cancelled{};
 		}
 
 		throw std::system_error{
-			static_cast<int>(-operation.m_res),
+			static_cast<int>(-operation.m_ioState.m_res),
 			std::system_category(),
 			"Connect operation failed: connect"
 		};

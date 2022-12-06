@@ -91,7 +91,6 @@ namespace cppcoro
  		friend class cppcoro::detail::async_operation_cancellable<file_write_operation_cancellable>;
 
  		bool try_start() noexcept { return m_impl.try_start(*this); }
- 		void cancel() noexcept { m_impl.cancel(*this); }
 
  		file_write_operation_impl m_impl;
 
