@@ -6,6 +6,7 @@
 #include <cppcoro/io_service.hpp>
 #include <cppcoro/on_scope_exit.hpp>
 #include <cppcoro/operation_cancelled.hpp>
+#include <cppcoro/detail/async_operation.hpp>
 
 #include <system_error>
 #include <cassert>
@@ -523,13 +524,13 @@ bool cppcoro::io_service::try_process_one_event(bool waitForEvent)
 
  		if (message.type == detail::message_type::CALLBACK_TYPE)
  		{
- 			auto* state = static_cast<detail::io_state*>(message.data);
+ 			auto* state = static_cast<detail::async_operation_base*>(message.data);
  			state->m_callback(state);
  			return true;
  		}
  		else
  		{
- 			if ((unsigned long long)message.data != 0)
+ 			if (message.data != nullptr)
  			{
  				cppcoro::coroutine_handle<>::from_address(message.data).resume();
  				return true;
@@ -900,39 +901,15 @@ void cppcoro::io_service::schedule_operation::await_suspend(
 cppcoro::io_service::timed_schedule_operation::timed_schedule_operation(
 	io_service& service,
 	std::chrono::high_resolution_clock::time_point resumeTime,
-	cppcoro::cancellation_token cancellationToken) noexcept
-	: m_scheduleOperation(service)
+	cppcoro::cancellation_token&& ct) noexcept
+	: cppcoro::detail::async_operation_cancellable<timed_schedule_operation>(
+ 				&service, std::move(ct))
 	, m_resumeTime(resumeTime)
-	, m_cancellationToken(std::move(cancellationToken))
  	, m_timerfd(detail::linux::create_timer_fd())
-	, m_state(cancellationToken.is_cancellation_requested() ? state::completed : state::not_started)
-	, detail::io_state(on_operation_completed)
-{
-}
+{}
 
-cppcoro::io_service::timed_schedule_operation::timed_schedule_operation(
-	timed_schedule_operation&& other) noexcept
-	: m_scheduleOperation(std::move(other.m_scheduleOperation))
-	, m_resumeTime(std::move(other.m_resumeTime))
-	, m_cancellationToken(std::move(other.m_cancellationToken))
- 	, m_timerfd(std::move(other.m_timerfd))
-	, m_state(other.m_state.load(std::memory_order_relaxed))
-	, detail::io_state(on_operation_completed)
-{
-}
-
-bool cppcoro::io_service::timed_schedule_operation::await_ready() const noexcept
-{
-	return m_state.load(std::memory_order_relaxed) == state::completed;
-}
-
-void cppcoro::io_service::timed_schedule_operation::await_suspend(
-	cppcoro::coroutine_handle<> awaiter)
-{
-	m_state.store(state::started, std::memory_order_relaxed);
-	m_scheduleOperation.m_awaiter = awaiter;
-	auto& service = m_scheduleOperation.m_service;
-
+bool cppcoro::io_service::timed_schedule_operation::try_start() noexcept {
+	m_fd = m_timerfd.fd();
 	std::chrono::high_resolution_clock::time_point currentTime = std::chrono::high_resolution_clock::now();
 	auto waitTime = m_resumeTime - currentTime;
 	itimerspec alarm_time = { 0 };
@@ -948,67 +925,13 @@ void cppcoro::io_service::timed_schedule_operation::await_suspend(
 	}
 	const bool ok = timerfd_settime(m_timerfd.fd(), 0, &alarm_time, NULL) != -1;
 	if (!ok) {
-		throw std::system_error
-		{
-			static_cast<int>(errno),
-			std::system_category(),
-			"Error timed_schedule_operation: timerfd_settime failed"
-		};
+		m_res = -errno;
+		return false;
 	}
-	service.get_io_context().watch_handle(m_timerfd.fd(), static_cast<void*>(this), detail::watch_type::readable);
-	if (m_cancellationToken.can_be_cancelled())
-	{
-		m_cancellationCallback.emplace(
-			std::move(m_cancellationToken),
-			[this] { this->on_cancellation_requested(); });
-	}
-	if(m_cancellationToken.is_cancellation_requested()) {
-		on_cancellation_requested();
-	}
-}
-
-void cppcoro::io_service::timed_schedule_operation::await_resume()
-{
-	m_cancellationCallback.reset();
-	if (m_state.load(std::memory_order_acquire) == state::cancelled) {
-		throw operation_cancelled{};
-	}
-}
-
-void cppcoro::io_service::timed_schedule_operation::on_cancellation_requested() noexcept
-{
-	auto oldState = state::started;
-	const bool marked_as_cancelled =
-		m_state.compare_exchange_strong(
-			oldState,
-			state::cancelled,
-			std::memory_order_release,
-			std::memory_order_acquire);
-	// No point requesting cancellation if the operation has already completed.
-	if (marked_as_cancelled) {
-		auto& service = m_scheduleOperation.m_service;
-		service.get_io_context().unwatch_handle(m_timerfd.fd());
-		service.schedule_impl(&m_scheduleOperation);
-	}
-}
-
-void cppcoro::io_service::timed_schedule_operation::on_operation_completed(
-	detail::io_state* ioState) noexcept {
-	auto* operation = static_cast<timed_schedule_operation*>(ioState);
-	auto& m_state = operation->m_state;
-
-	auto oldState = state::started;
-	const bool marked_as_completed =
-		m_state.compare_exchange_strong(
-			oldState,
-			state::completed,
-			std::memory_order_release,
-			std::memory_order_acquire);
-	// Make sure the operation isn't in cancelled state
-	if (marked_as_completed) {
-		auto& service = operation->m_scheduleOperation.m_service;
-		service.get_io_context().unwatch_handle(operation->m_timerfd.fd());
-		service.schedule_impl(&operation->m_scheduleOperation);
-	}
+	m_completeFunc = [&]() {
+		return 0;
+	};
+	m_ioService->get_io_context().watch_handle(m_timerfd.fd(), reinterpret_cast<void*>(this), detail::watch_type::readable);
+	return true;
 }
 #endif

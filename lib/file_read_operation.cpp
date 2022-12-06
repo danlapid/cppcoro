@@ -4,6 +4,7 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 #include <cppcoro/file_read_operation.hpp>
+#include <cppcoro/io_service.hpp>
 
 #if CPPCORO_OS_WINNT
 # ifndef WIN32_LEAN_AND_MEAN
@@ -12,8 +13,9 @@
 # include <windows.h>
 
 bool cppcoro::file_read_operation_impl::try_start(
-	cppcoro::detail::win32_overlapped_operation_base& operation) noexcept
+	cppcoro::detail::async_operation_base& operation) noexcept
 {
+	operation.m_handle = m_fileHandle;
 	const DWORD numberOfBytesToRead =
 		m_byteCount <= 0xFFFFFFFF ?
 		static_cast<DWORD>(m_byteCount) : DWORD(0xFFFFFFFF);
@@ -42,14 +44,12 @@ bool cppcoro::file_read_operation_impl::try_start(
 
 		return false;
 	}
-	auto fileHandle = m_fileHandle;
-	auto* overlapped = operation.get_overlapped();
-	operation.m_completeFunc = [fileHandle, overlapped]() {
+	operation.m_completeFunc = [&]() {
 		detail::win32::dword_t numberOfBytesTransferred = 0;
 		detail::win32::bool_t ok;
 		ok = GetOverlappedResult(
-			fileHandle,
-			overlapped,
+			m_fileHandle,
+			operation.get_overlapped(),
 			&numberOfBytesTransferred,
 			0
 		);
@@ -63,39 +63,22 @@ bool cppcoro::file_read_operation_impl::try_start(
 	return true;
 }
 
-void cppcoro::file_read_operation_impl::cancel(
-	cppcoro::detail::win32_overlapped_operation_base& operation) noexcept
-{
-#if CPPCORO_OS_WINNT >= 0x600
-	(void)::CancelIoEx(m_fileHandle, operation.get_overlapped());
-#else
-	(void)::CancelIo(m_fileHandle);
-#endif
-}
-
 #elif CPPCORO_OS_LINUX
 #include <unistd.h>
 
 bool cppcoro::file_read_operation_impl::try_start(
-	cppcoro::detail::linux_async_operation_base& operation) noexcept
+	cppcoro::detail::async_operation_base& operation) noexcept
 {
+	operation.m_fd = m_fileHandle;
 	auto seek_res = lseek(m_fileHandle, m_offset, SEEK_SET);
 	if (seek_res < 0) {
 		operation.m_res = -errno;
 		return false;
 	}
 	operation.m_completeFunc = [&]() {
-		int res = read(m_fileHandle, m_buffer, m_byteCount);
-		operation.m_ioService->get_io_context().unwatch_handle(m_fileHandle);
-		return res;
+		return read(m_fileHandle, m_buffer, m_byteCount);
 	};
 	operation.m_ioService->get_io_context().watch_handle(m_fileHandle, reinterpret_cast<void*>(&operation), detail::watch_type::readable);
 	return true;
-}
-
-void cppcoro::file_read_operation_impl::cancel(
-	cppcoro::detail::linux_async_operation_base& operation) noexcept
-{
-	operation.m_ioService->get_io_context().unwatch_handle(m_fileHandle);
 }
 #endif

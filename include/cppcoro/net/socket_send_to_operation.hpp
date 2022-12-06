@@ -98,7 +98,6 @@ namespace cppcoro::net
 		friend class cppcoro::detail::async_operation_cancellable<socket_send_to_operation_cancellable>;
 
 		bool try_start() noexcept { return m_impl.try_start(*this); }
-		void cancel() noexcept { return m_impl.cancel(*this); }
 
 		socket_send_to_operation_impl m_impl;
 

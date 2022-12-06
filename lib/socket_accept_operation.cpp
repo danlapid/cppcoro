@@ -5,6 +5,7 @@
 
 #include <cppcoro/net/socket_accept_operation.hpp>
 #include <cppcoro/net/socket.hpp>
+#include <cppcoro/io_service.hpp>
 
 #include "socket_helpers.hpp"
 
@@ -20,8 +21,9 @@
 // and socket_accept_operation_cancellable.
 
 bool cppcoro::net::socket_accept_operation_impl::try_start(
-	cppcoro::detail::win32_overlapped_operation_base& operation) noexcept
+	cppcoro::detail::async_operation_base& operation) noexcept
 {
+	operation.m_handle = reinterpret_cast<HANDLE>(m_listeningSocket.native_handle());
 	static_assert(
 		(sizeof(m_addressBuffer) / 2) >= (16 + sizeof(SOCKADDR_IN)) &&
 		(sizeof(m_addressBuffer) / 2) >= (16 + sizeof(SOCKADDR_IN6)),
@@ -46,15 +48,13 @@ bool cppcoro::net::socket_accept_operation_impl::try_start(
 			return false;
 		}
 	}
-	auto socketHandle = m_listeningSocket.native_handle();
-	auto* overlapped = operation.get_overlapped();
-	operation.m_completeFunc = [socketHandle, overlapped]() -> int64_t {
+	operation.m_completeFunc = [&]() -> int64_t {
 		cppcoro::detail::win32::dword_t numberOfBytesTransferred = 0;
 		cppcoro::detail::win32::bool_t ok;
 		cppcoro::detail::win32::dword_t flags;
 		ok = WSAGetOverlappedResult(
-			socketHandle,
-			overlapped,
+			m_listeningSocket.native_handle(),
+			operation.get_overlapped(),
 			&numberOfBytesTransferred,
 			0,
 			&flags
@@ -69,21 +69,8 @@ bool cppcoro::net::socket_accept_operation_impl::try_start(
 	return true;
 }
 
-void cppcoro::net::socket_accept_operation_impl::cancel(
-	cppcoro::detail::win32_overlapped_operation_base& operation) noexcept
-{
-#if CPPCORO_OS_WINNT >= 0x600
-	(void)::CancelIoEx(
-		reinterpret_cast<HANDLE>(m_listeningSocket.native_handle()),
-		operation.get_overlapped());
-#else
-	(void)::CancelIo(
-		reinterpret_cast<HANDLE>(m_listeningSocket.native_handle()));
-#endif
-}
-
 void cppcoro::net::socket_accept_operation_impl::get_result(
-	cppcoro::detail::win32_overlapped_operation_base& operation)
+	cppcoro::detail::async_operation_base& operation)
 {
 	if (operation.m_errorCode != ERROR_SUCCESS)
 	{
@@ -144,8 +131,9 @@ void cppcoro::net::socket_accept_operation_impl::get_result(
 # include <netinet/tcp.h>
 # include <netinet/udp.h>
 bool cppcoro::net::socket_accept_operation_impl::try_start(
-	cppcoro::detail::linux_async_operation_base& operation) noexcept
+	cppcoro::detail::async_operation_base& operation) noexcept
 {
+	operation.m_fd = m_listeningSocket.native_handle();
 	static_assert(
 		(sizeof(m_addressBuffer) / 2) >= (16 + sizeof(sockaddr_in)) &&
 		(sizeof(m_addressBuffer) / 2) >= (16 + sizeof(sockaddr_in6)),
@@ -153,22 +141,14 @@ bool cppcoro::net::socket_accept_operation_impl::try_start(
 
 	operation.m_completeFunc = [&]() {
 		socklen_t len = sizeof(m_addressBuffer) / 2;
-		int res = accept(m_listeningSocket.native_handle(), reinterpret_cast<sockaddr*>(m_addressBuffer), &len);
-		operation.m_ioService->get_io_context().unwatch_handle(m_listeningSocket.native_handle());
-		return res;
+		return accept(m_listeningSocket.native_handle(), reinterpret_cast<sockaddr*>(m_addressBuffer), &len);
 	};
 	operation.m_ioService->get_io_context().watch_handle(m_listeningSocket.native_handle(), reinterpret_cast<void*>(&operation), cppcoro::detail::watch_type::readable);
 	return true;
 }
 
-void cppcoro::net::socket_accept_operation_impl::cancel(
-	cppcoro::detail::linux_async_operation_base& operation) noexcept
-{
-	operation.m_ioService->get_io_context().unwatch_handle(m_listeningSocket.native_handle());
-}
-
 void cppcoro::net::socket_accept_operation_impl::get_result(
-	cppcoro::detail::linux_async_operation_base& operation)
+	cppcoro::detail::async_operation_base& operation)
 {
 	if (operation.m_res < 0)
 	{

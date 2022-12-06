@@ -85,7 +85,7 @@ namespace cppcoro
 		bool message_queue::enqueue_message(message msg)
 		{
 			return ::PostQueuedCompletionStatus(
-				m_pollfd.handle(), 0, reinterpret_cast<ULONG_PTR>(msg.data), nullptr);
+				m_pollfd.handle(), static_cast<DWORD>(msg.type), reinterpret_cast<ULONG_PTR>(msg.data), nullptr);
 		}
 
 		bool message_queue::dequeue_message(message& msg, bool wait)
@@ -99,14 +99,14 @@ namespace cppcoro
 			if (overlapped != nullptr)
 			{
 				msg.type = message_type::CALLBACK_TYPE;
-				msg.data = reinterpret_cast<void*>(overlapped);
+				msg.data = static_cast<void*>(overlapped);
 				return true;
 			}
 			else if (ok)
 			{
 				if (completionKey != 0)
 				{
-					msg.type = message_type::RESUME_TYPE;
+					msg.type = static_cast<message_type>(numberOfBytesTransferred);
 					msg.data = reinterpret_cast<void*>(completionKey);
 					return true;
 				}

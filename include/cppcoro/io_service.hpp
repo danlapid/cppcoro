@@ -10,6 +10,7 @@
 #include <cppcoro/cancellation_registration.hpp>
 
 #include <cppcoro/detail/platform.hpp>
+#include <cppcoro/detail/async_operation.hpp>
 #include <cppcoro/detail/message_queue.hpp>
 
 #include <optional>
@@ -241,43 +242,23 @@ namespace cppcoro
 	};
 
 #elif CPPCORO_OS_LINUX
-	class io_service::timed_schedule_operation : public detail::io_state
+	class io_service::timed_schedule_operation
+		: public detail::async_operation_cancellable<timed_schedule_operation>
 	{
 	public:
 
 		timed_schedule_operation(
 			io_service& service,
 			std::chrono::high_resolution_clock::time_point resumeTime,
-			cppcoro::cancellation_token cancellationToken) noexcept;
+			cppcoro::cancellation_token&& ct) noexcept;
 
-		timed_schedule_operation(timed_schedule_operation&& other) noexcept;
+ 	private:
+ 		friend class cppcoro::detail::async_operation_cancellable<timed_schedule_operation>;
 
-		timed_schedule_operation& operator=(timed_schedule_operation&& other) = delete;
-		timed_schedule_operation(const timed_schedule_operation& other) = delete;
-		timed_schedule_operation& operator=(const timed_schedule_operation& other) = delete;
+ 		bool try_start() noexcept;
 
-		bool await_ready() const noexcept;
-		void await_suspend(cppcoro::coroutine_handle<> awaiter);
-		void await_resume();
-
-	private:
-		enum class state
-		{
-			not_started,
-			started,
-			cancelled,
-			completed
-		};
-
-		io_service::schedule_operation m_scheduleOperation;
 		std::chrono::high_resolution_clock::time_point m_resumeTime;
-
-		std::atomic<state> m_state;
-		cppcoro::cancellation_token m_cancellationToken;
-		std::optional<cppcoro::cancellation_registration> m_cancellationCallback;
 	 	detail::safe_file_handle_t m_timerfd;
-		void on_cancellation_requested() noexcept;
-		static void on_operation_completed(detail::io_state* ioState) noexcept;
 	};
 #endif
 

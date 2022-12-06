@@ -5,6 +5,7 @@
 
 #include <cppcoro/net/socket_connect_operation.hpp>
 #include <cppcoro/net/socket.hpp>
+#include <cppcoro/io_service.hpp>
 
 #include <cppcoro/operation_cancelled.hpp>
 
@@ -20,8 +21,9 @@
 # include <windows.h>
 
 bool cppcoro::net::socket_connect_operation_impl::try_start(
-	cppcoro::detail::win32_overlapped_operation_base& operation) noexcept
+	cppcoro::detail::async_operation_base& operation) noexcept
 {
+	operation.m_handle = reinterpret_cast<HANDLE>(m_socket.native_handle());
 	// Lookup the address of the ConnectEx function pointer for this socket.
 	LPFN_CONNECTEX connectExPtr;
 	{
@@ -68,15 +70,13 @@ bool cppcoro::net::socket_connect_operation_impl::try_start(
 			return false;
 		}
 	}
-	auto socketHandle = m_socket.native_handle();
-	auto* overlapped = operation.get_overlapped();
-	operation.m_completeFunc = [socketHandle, overlapped]() -> int64_t {
+	operation.m_completeFunc = [&]() -> int64_t {
 		cppcoro::detail::win32::dword_t numberOfBytesTransferred = 0;
 		cppcoro::detail::win32::bool_t ok;
 		cppcoro::detail::win32::dword_t flags;
 		ok = WSAGetOverlappedResult(
-			socketHandle,
-			overlapped,
+			m_socket.native_handle(),
+			operation.get_overlapped(),
 			&numberOfBytesTransferred,
 			0,
 			&flags
@@ -91,21 +91,8 @@ bool cppcoro::net::socket_connect_operation_impl::try_start(
 	return true;
 }
 
-void cppcoro::net::socket_connect_operation_impl::cancel(
-	cppcoro::detail::win32_overlapped_operation_base& operation) noexcept
-{
-#if CPPCORO_OS_WINNT >= 0x600
-	(void)::CancelIoEx(
-		reinterpret_cast<HANDLE>(m_socket.native_handle()),
-		operation.get_overlapped());
-#else
-	(void)::CancelIo(
-		reinterpret_cast<HANDLE>(m_socket.native_handle()));
-#endif
-}
-
 void cppcoro::net::socket_connect_operation_impl::get_result(
-	cppcoro::detail::win32_overlapped_operation_base& operation)
+	cppcoro::detail::async_operation_base& operation)
 {
 	if (operation.m_errorCode != ERROR_SUCCESS)
 	{
@@ -192,9 +179,9 @@ void cppcoro::net::socket_connect_operation_impl::get_result(
 # include <netinet/udp.h>
 
 bool cppcoro::net::socket_connect_operation_impl::try_start(
-	cppcoro::detail::linux_async_operation_base& operation) noexcept
+	cppcoro::detail::async_operation_base& operation) noexcept
 {
-
+	operation.m_fd = m_socket.native_handle();
 	sockaddr_storage remoteSockaddrStorage {0};
 	const socklen_t sockaddrNameLength = cppcoro::net::detail::ip_endpoint_to_sockaddr(
 		m_remoteEndPoint,
@@ -206,26 +193,18 @@ bool cppcoro::net::socket_connect_operation_impl::try_start(
 		return false;
 	}
 	operation.m_completeFunc = [&, remoteSockaddrStorage, sockaddrNameLength]() {
-		int res = connect(m_socket.native_handle(), reinterpret_cast<const sockaddr*>(&remoteSockaddrStorage), sockaddrNameLength);
-		operation.m_ioService->get_io_context().unwatch_handle(m_socket.native_handle());
-		return res;
+		return connect(m_socket.native_handle(), reinterpret_cast<const sockaddr*>(&remoteSockaddrStorage), sockaddrNameLength);
 	};
 	operation.m_ioService->get_io_context().watch_handle(m_socket.native_handle(), reinterpret_cast<void*>(&operation), cppcoro::detail::watch_type::writable);
 	return true;
 }
 
-void cppcoro::net::socket_connect_operation_impl::cancel(
-	cppcoro::detail::linux_async_operation_base& operation) noexcept
-{
-	operation.m_ioService->get_io_context().unwatch_handle(m_socket.native_handle());
-}
-
 void cppcoro::net::socket_connect_operation_impl::get_result(
-	cppcoro::detail::linux_async_operation_base& operation)
+	cppcoro::detail::async_operation_base& operation)
 {
 	if (operation.m_res < 0)
 	{
-		if (operation.m_res == -cppcoro::detail::error_operation_cancelled)
+		if (operation.m_res == -ECANCELED)
 		{
 			throw operation_cancelled{};
 		}

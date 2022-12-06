@@ -67,7 +67,7 @@ namespace cppcoro
 			friend class cppcoro::detail::async_operation<socket_accept_operation>;
 
 			bool try_start() noexcept { return m_impl.try_start(*this); }
-			void get_result() { m_impl.get_result(*this); }
+			decltype(auto) get_result() { return m_impl.get_result(*this); }
 
 			socket_accept_operation_impl m_impl;
 
@@ -92,8 +92,7 @@ namespace cppcoro
 			friend class cppcoro::detail::async_operation_cancellable<socket_accept_operation_cancellable>;
 
 			bool try_start() noexcept { return m_impl.try_start(*this); }
-			void cancel() noexcept { m_impl.cancel(*this); }
-			void get_result() { m_impl.get_result(*this); }
+			decltype(auto) get_result() { return m_impl.get_result(*this); }
 
 			socket_accept_operation_impl m_impl;
 

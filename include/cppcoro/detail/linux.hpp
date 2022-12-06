@@ -12,10 +12,12 @@
 #endif
 
 #include <utility>
+#include <functional>
 #include <cstdint>
 
 namespace cppcoro
 {
+	class io_service;
 	namespace detail
 	{
 		namespace linux
@@ -73,11 +75,21 @@ namespace cppcoro
 
 			struct io_state
 			{
-				using callback_type = void(io_state* state);
-				callback_type* m_callback;
-				io_state(callback_type* callback) noexcept
-					: m_callback(callback)
+				io_state(io_service* ioService) noexcept
+					: m_ioService(ioService)
+					, m_fd(-1)
+					, m_res(0)
 				{}
+
+				std::size_t get_result();
+				void on_operation_completed_base();
+				void cancel() noexcept;
+
+				io_service* m_ioService;
+				fd_t m_fd;
+				std::int32_t m_res;
+				std::function<int()> m_completeFunc;
+
 			};
 
 			safe_fd create_event_fd();

@@ -12,12 +12,14 @@
 #endif
 
 #include <utility>
+#include <functional>
 #include <cstdint>
 
 struct _OVERLAPPED;
 
 namespace cppcoro
 {
+	class io_service;
 	namespace detail
 	{
 		namespace win32
@@ -73,22 +75,27 @@ namespace cppcoro
 				char* buf;
 			};
 
-			struct io_state : win32::overlapped
+			struct io_state : overlapped
 			{
-				using callback_type = void(io_state* state);
 
-				io_state(callback_type* callback = nullptr) noexcept
-					: m_callback(callback)
-				{
-					this->Internal = 0;
-					this->InternalHigh = 0;
-					this->Offset = 0;
-					this->OffsetHigh = 0;
-					this->Pointer = nullptr;
-					this->hEvent = nullptr;
-				}
+				io_state(io_service* ioService) noexcept
+					: m_ioService(ioService)
+					, m_handle(nullptr)
+					, m_errorCode(0)
+					, m_numberOfBytesTransferred(0)
+					, overlapped{0}
+				{}
 
-				callback_type* m_callback;
+				_OVERLAPPED* get_overlapped() noexcept;
+				std::size_t get_result();
+				void on_operation_completed_base();
+				void cancel() noexcept;
+
+				io_service* m_ioService;
+				handle_t m_handle;
+				dword_t m_errorCode;
+				dword_t m_numberOfBytesTransferred;
+				std::function<int64_t()> m_completeFunc;
 			};
 
 			class safe_handle
