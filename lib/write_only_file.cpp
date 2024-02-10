@@ -10,7 +10,7 @@
 #  define WIN32_LEAN_AND_MEAN
 # endif
 # include <windows.h>
-#elif CPPCORO_OS_LINUX
+#elif CPPCORO_OS_LINUX || CPPCORO_OS_DARWIN
 #include <fcntl.h>
 #endif
 
@@ -24,7 +24,7 @@ cppcoro::write_only_file cppcoro::write_only_file::open(
 	return write_only_file(file::open(
 #if CPPCORO_OS_WINNT
 		GENERIC_WRITE,
-#elif CPPCORO_OS_LINUX
+#elif CPPCORO_OS_LINUX || CPPCORO_OS_DARWIN
 		O_WRONLY,
 #endif
 		ioService,

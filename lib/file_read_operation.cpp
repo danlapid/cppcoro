@@ -62,7 +62,7 @@ bool cppcoro::file_read_operation_impl::try_start(
 	return true;
 }
 
-#elif CPPCORO_OS_LINUX
+#elif CPPCORO_OS_LINUX || CPPCORO_OS_DARWIN
 #include <unistd.h>
 
 bool cppcoro::file_read_operation_impl::try_start(

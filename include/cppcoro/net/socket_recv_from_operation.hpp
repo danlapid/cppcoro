@@ -30,7 +30,7 @@ namespace cppcoro::net
 			: m_socket(socket)
 #if CPPCORO_OS_WINNT
 			, m_buffer(const_cast<void*>(buffer), byteCount)
-#elif CPPCORO_OS_LINUX
+#elif CPPCORO_OS_LINUX || CPPCORO_OS_DARWIN
 			, m_buffer(buffer)
 			, m_byteCount(byteCount)
 #endif
@@ -46,7 +46,7 @@ namespace cppcoro::net
 		socket& m_socket;
 #if CPPCORO_OS_WINNT
 		cppcoro::detail::win32::wsabuf m_buffer;
-#elif CPPCORO_OS_LINUX
+#elif CPPCORO_OS_LINUX || CPPCORO_OS_DARWIN
  		void* m_buffer;
  		std::size_t m_byteCount;
 #endif

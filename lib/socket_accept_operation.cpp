@@ -127,7 +127,7 @@ void cppcoro::net::socket_accept_operation_impl::get_result(
 		}
 	}
 }
-#elif CPPCORO_OS_LINUX
+#elif CPPCORO_OS_LINUX || CPPCORO_OS_DARWIN
 # include <sys/socket.h>
 # include <netinet/in.h>
 # include <netinet/tcp.h>

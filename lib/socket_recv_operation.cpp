@@ -60,7 +60,7 @@ bool cppcoro::net::socket_recv_operation_impl::try_start(
 	return true;
 }
 
-#elif CPPCORO_OS_LINUX
+#elif CPPCORO_OS_LINUX || CPPCORO_OS_DARWIN
 # include <sys/socket.h>
 # include <netinet/in.h>
 # include <netinet/tcp.h>

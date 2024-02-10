@@ -173,7 +173,7 @@ void cppcoro::net::socket_connect_operation_impl::get_result(
 		}
 	}
 }
-#elif CPPCORO_OS_LINUX
+#elif CPPCORO_OS_LINUX || CPPCORO_OS_DARWIN
 # include <sys/socket.h>
 # include <netinet/in.h>
 # include <netinet/tcp.h>
@@ -194,9 +194,24 @@ bool cppcoro::net::socket_connect_operation_impl::try_start(
 		return false;
 	}
 	operation.m_completeFunc = [&, remoteSockaddrStorage, sockaddrNameLength]() {
+#if CPPCORO_OS_LINUX
 		return connect(m_socket.native_handle(), reinterpret_cast<const sockaddr*>(&remoteSockaddrStorage), sockaddrNameLength);
+#elif CPPCORO_OS_DARWIN
+		// code to get socket error via getsockopt and SO_ERROR
+		int error = 0;
+		socklen_t len = sizeof(error);
+		int res = getsockopt(m_socket.native_handle(), SOL_SOCKET, SO_ERROR, &error, &len);
+		if (res < 0) {
+			return -errno;
+		}
+		return error;
+#endif
 	};
+#if CPPCORO_OS_LINUX
 	operation.m_ioService->get_io_context().watch_handle(m_socket.native_handle(), reinterpret_cast<void*>(&operation), cppcoro::detail::watch_type::writable);
+#elif CPPCORO_OS_DARWIN
+	operation.m_ioService->get_io_context().watch_handle(m_socket.native_handle(), reinterpret_cast<void*>(&operation), cppcoro::detail::watch_type::readablewritable);
+#endif
 	return true;
 }
 

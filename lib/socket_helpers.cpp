@@ -20,7 +20,7 @@
 # include <winsock2.h>
 # include <ws2tcpip.h>
 # include <windows.h>
-#elif CPPCORO_OS_LINUX
+#elif CPPCORO_OS_LINUX || CPPCORO_OS_DARWIN
 # include <sys/socket.h>
 # include <netinet/in.h>
 # include <netinet/tcp.h>

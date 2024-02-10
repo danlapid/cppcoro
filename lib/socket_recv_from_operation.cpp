@@ -93,7 +93,7 @@ cppcoro::net::socket_recv_from_operation_impl::get_result(
 			*reinterpret_cast<SOCKADDR*>(&m_sourceSockaddrStorage)));
 }
 
-#elif CPPCORO_OS_LINUX
+#elif CPPCORO_OS_LINUX || CPPCORO_OS_DARWIN
 # include <sys/socket.h>
 # include <netinet/in.h>
 # include <netinet/tcp.h>
@@ -111,13 +111,39 @@ bool cppcoro::net::socket_recv_from_operation_impl::try_start(
 	m_sourceSockaddrLength = sizeof(m_sourceSockaddrStorage);
 
 	operation.m_completeFunc = [&]() {
-		return recvfrom(
-			m_socket.native_handle(), m_buffer, m_byteCount, MSG_TRUNC,
+#if !CPPCORO_OS_LINUX
+		// NB: recvfrom(..., MSG_TRUNC) would be a more reliable way to do this on
+		// Linux, but isn't supported by POSIX.
+		int available;
+		socklen_t optlen = sizeof(available);
+		int err = getsockopt(m_socket.native_handle(), SOL_SOCKET, SO_NREAD, &available, &optlen);
+		if (err != 0) {
+			return -1;
+		}
+		if (available > m_byteCount) {
+			errno = ENOMEM;
+			return -1;
+		}
+#endif
+		int res = recvfrom(
+			m_socket.native_handle(),
+			m_buffer,
+			m_byteCount,
+			MSG_TRUNC,
 			reinterpret_cast<sockaddr*>(&m_sourceSockaddrStorage),
-			reinterpret_cast<socklen_t*>(&m_sourceSockaddrLength)
-		);
+			reinterpret_cast<socklen_t*>(&m_sourceSockaddrLength));
+#if !CPPCORO_OS_LINUX
+		if (res > 0)
+		{
+			res = available;
+		}
+#endif
+		return res;
 	};
-	operation.m_ioService->get_io_context().watch_handle(m_socket.native_handle(), reinterpret_cast<void*>(&operation), cppcoro::detail::watch_type::readable);
+	operation.m_ioService->get_io_context().watch_handle(
+		m_socket.native_handle(),
+		reinterpret_cast<void*>(&operation),
+		cppcoro::detail::watch_type::readable);
 	return true;
 }
 

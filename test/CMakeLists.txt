@@ -45,18 +45,25 @@ if(WIN32)
         file_tests.cpp
         socket_tests.cpp
     )
-else()
-	if(CMAKE_SYSTEM_NAME MATCHES "Linux")
-		list(APPEND tests
-			scheduling_operator_tests.cpp
-			io_service_tests.cpp
-			file_tests.cpp
-			socket_tests.cpp
-		)
-	endif()
-	# let more time for some tests
-	set(async_auto_reset_event_tests_TIMEOUT 60)
+elseif(CMAKE_SYSTEM_NAME MATCHES "Linux")
+	list(APPEND tests
+		scheduling_operator_tests.cpp
+		io_service_tests.cpp
+		file_tests.cpp
+		socket_tests.cpp
+	)
+elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin")
+	list(APPEND tests
+		scheduling_operator_tests.cpp
+		io_service_tests.cpp
+		file_tests.cpp
+		socket_tests.cpp
+	)
 endif()
+
+
+# let more time for some tests
+set(async_auto_reset_event_tests_TIMEOUT 60)
 
 foreach(test ${tests})
 	get_filename_component(test_name ${test} NAME_WE)

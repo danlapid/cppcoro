@@ -43,13 +43,17 @@ void cppcoro::writable_file::set_size(
 		};
 	}
 }
-#elif CPPCORO_OS_LINUX
+#elif CPPCORO_OS_LINUX || CPPCORO_OS_DARWIN
 #include <unistd.h>
 
 void cppcoro::writable_file::set_size(
 	std::uint64_t fileSize)
 {
+#if CPPCORO_OS_LINUX
 	if (ftruncate64(m_fileHandle.handle(), fileSize) < 0)
+#else
+	if (ftruncate(m_fileHandle.handle(), fileSize) < 0)
+#endif
 	{
 		throw std::system_error
 		{

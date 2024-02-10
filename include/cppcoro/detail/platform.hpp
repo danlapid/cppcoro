@@ -7,11 +7,12 @@
 
 #include <cppcoro/config.hpp>
 #if CPPCORO_OS_WINNT
-# include <cppcoro/detail/win32.hpp>
+#include <cppcoro/detail/win32.hpp>
 #elif CPPCORO_OS_LINUX
-# include <cppcoro/detail/linux.hpp>
+#include <cppcoro/detail/linux.hpp>
+#elif CPPCORO_OS_DARWIN
+#include <cppcoro/detail/darwin.hpp>
 #endif
-
 
 namespace cppcoro
 {
@@ -27,6 +28,11 @@ namespace cppcoro
 		using safe_file_handle_t = linux::safe_fd;
 		using socket_handle_t = linux::fd_t;
 		using io_state = linux::io_state;
+#elif CPPCORO_OS_DARWIN
+		using file_handle_t = darwin::fd_t;
+		using safe_file_handle_t = darwin::safe_fd;
+		using socket_handle_t = darwin::fd_t;
+		using io_state = darwin::io_state;
 #endif
     }
 }

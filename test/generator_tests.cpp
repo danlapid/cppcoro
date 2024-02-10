@@ -7,6 +7,7 @@
 #include <cppcoro/on_scope_exit.hpp>
 #include <cppcoro/fmap.hpp>
 
+#include <cstdint>
 #include <iostream>
 #include <vector>
 #include <string>
