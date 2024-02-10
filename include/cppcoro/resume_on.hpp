@@ -117,15 +117,12 @@ namespace cppcoro
 	template<typename SCHEDULER, typename T>
 	async_generator<T> resume_on(SCHEDULER& scheduler, async_generator<T> source)
 	{
-		auto iter = co_await source.begin();
-		auto endIter = source.end();
-
-		while (iter != endIter)
+		for (detail::async_generator_iterator<T> iter = co_await source.begin(); iter != source.end();)
 		{
 			auto& value = *iter;
 			co_await scheduler.schedule();
 			co_yield value;
-			co_await ++iter;
+			co_await ++iter; // moved due to error: insufficient contextual information to determine type on old compilers
 		}
 	}
 
