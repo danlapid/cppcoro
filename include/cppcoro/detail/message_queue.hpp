@@ -48,9 +48,12 @@ namespace cppcoro
 			void unwatch_handle(file_handle_t handle);
 			bool enqueue_message(message msg);
 			bool dequeue_message(message& msg, bool wait);
+#if CPPCORO_OS_DARWIN
+			void watch_event(struct kevent* event, void* cb);
+#endif
 
 		private:
-#if CPPCORO_OS_LINUX
+#if CPPCORO_OS_LINUX || CPPCORO_OS_DARWIN
 			int m_pipefd[2];
 #endif
 			safe_file_handle_t m_pollfd;

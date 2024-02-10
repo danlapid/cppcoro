@@ -27,13 +27,14 @@
 # include <ws2tcpip.h>
 # include <windows.h>
 int get_error() {return ::WSAGetLastError();}
-#elif CPPCORO_OS_LINUX
+#elif CPPCORO_OS_LINUX || CPPCORO_OS_DARWIN
 # include <sys/socket.h>
 # include <netinet/in.h>
 # include <netinet/tcp.h>
 # include <netinet/udp.h>
 # include <unistd.h>
 # include <cstring>
+# include <fcntl.h>
 #define closesocket close
 #define INVALID_SOCKET (-1)
 #define SOCKET_ERROR (-1)
@@ -176,7 +177,7 @@ namespace
 
 			return cppcoro::net::socket(socketHandle, &ioSvc);
 		}
-#elif CPPCORO_OS_LINUX
+#elif CPPCORO_OS_LINUX || CPPCORO_OS_DARWIN
 		cppcoro::net::socket create_socket(
 			int addressFamily,
 			int socketType,
@@ -184,7 +185,7 @@ namespace
 			cppcoro::io_service& ioSvc)
 		{
 
-			const int socketHandle = ::socket(addressFamily, socketType | SOCK_NONBLOCK, protocol);
+			const int socketHandle = ::socket(addressFamily, socketType, protocol);
 			if (socketHandle == INVALID_SOCKET)
 			{
 				const int errorCode = get_error();
@@ -192,6 +193,13 @@ namespace
 					errorCode,
 					std::system_category(),
 					"Error creating socket");
+			}
+			if (fcntl(socketHandle, F_SETFL, fcntl(socketHandle, F_GETFL, 0) | O_NONBLOCK) == -1) {
+				const int errorCode = get_error();
+				throw std::system_error(
+					errorCode,
+					std::system_category(),
+					"Error creating socket: Failed setting socket to nonblocking");
 			}
 
 			auto closeSocketOnFailure = cppcoro::on_scope_failure([&]
@@ -460,7 +468,7 @@ cppcoro::detail::socket_handle_t duplicate_socket(const cppcoro::detail::socket_
 	WSAPROTOCOL_INFO wsa_pi;
     WSADuplicateSocket(handle, GetCurrentProcessId(), &wsa_pi);
     return WSASocket(wsa_pi.iAddressFamily, wsa_pi.iSocketType, wsa_pi.iProtocol, &wsa_pi, 0, 0);
-#elif CPPCORO_OS_LINUX
+#elif CPPCORO_OS_LINUX || CPPCORO_OS_DARWIN
 	return dup(handle);
 #endif
 }

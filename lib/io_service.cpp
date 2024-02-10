@@ -23,6 +23,8 @@
 # include <windows.h>
 #elif CPPCORO_OS_LINUX
 # include <sys/timerfd.h>
+#elif CPPCORO_OS_DARWIN
+# include <sys/event.h>
 #endif
 
 #if CPPCORO_OS_WINNT
@@ -928,6 +930,37 @@ bool cppcoro::io_service::timed_schedule_operation::try_start() noexcept {
 		return 0;
 	};
 	m_ioService->get_io_context().watch_handle(m_timerfd.fd(), reinterpret_cast<void*>(this), detail::watch_type::readable);
+	return true;
+}
+#elif CPPCORO_OS_DARWIN
+void cppcoro::io_service::schedule_operation::await_suspend(
+	cppcoro::coroutine_handle<> awaiter) noexcept 
+{
+	m_awaiter = awaiter;
+	m_service.schedule_impl(this);
+}
+
+cppcoro::io_service::timed_schedule_operation::timed_schedule_operation(
+	io_service& service,
+	std::chrono::high_resolution_clock::time_point resumeTime,
+	cppcoro::cancellation_token&& ct) noexcept
+	: cppcoro::detail::async_operation_cancellable<timed_schedule_operation>(
+		  &service, std::move(ct))
+	, m_resumeTime(resumeTime)
+ 	, m_timerfd(detail::darwin::create_timer_fd())
+{
+}
+
+bool cppcoro::io_service::timed_schedule_operation::try_start() noexcept
+{
+	std::chrono::high_resolution_clock::time_point currentTime =
+		std::chrono::high_resolution_clock::now();
+	auto waitTime = m_resumeTime - currentTime;
+	auto miliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(waitTime);
+	struct kevent event;
+	EV_SET(&event, m_timerfd.fd(), EVFILT_TIMER, EV_ADD | EV_ONESHOT, 0, miliseconds.count(), reinterpret_cast<void*>(this));
+	m_completeFunc = [&]() { return 0; };
+	m_ioService->get_io_context().watch_event(&event, reinterpret_cast<void*>(this));
 	return true;
 }
 #endif

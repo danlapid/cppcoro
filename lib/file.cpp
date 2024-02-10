@@ -14,7 +14,7 @@
 #  define WIN32_LEAN_AND_MEAN
 # endif
 # include <windows.h>
-#elif CPPCORO_OS_LINUX
+#elif CPPCORO_OS_LINUX || CPPCORO_OS_DARWIN
 # include <fcntl.h>
 # include <sys/stat.h>
 # include <sys/types.h>
@@ -43,7 +43,7 @@ std::uint64_t cppcoro::file::size() const
 	}
 
 	return size.QuadPart;
-#elif CPPCORO_OS_LINUX
+#elif CPPCORO_OS_LINUX || CPPCORO_OS_DARWIN
 	struct stat sb;
 	if (fstat(m_fileHandle.handle(), &sb) < 0)
 	{
@@ -157,7 +157,7 @@ cppcoro::file cppcoro::file::open(
 	return { std::move(fileHandle), &ioService };
 }
 
-#elif CPPCORO_OS_LINUX
+#elif CPPCORO_OS_LINUX || CPPCORO_OS_DARWIN
 
 cppcoro::file cppcoro::file::open(
 	int fileAccess,

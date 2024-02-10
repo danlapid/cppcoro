@@ -348,14 +348,6 @@ jobs:
             generator: "Unix Makefiles",
           }
           - {
-            name: "MacOS 11 C++20",
-            os: macos-11,
-            buildtype: Release,
-            cxx: "clang++",
-            cxxver: 20,
-            generator: "Unix Makefiles",
-          }
-          - {
             name: "MacOS 12 C++20",
             os: macos-12,
             buildtype: Release,

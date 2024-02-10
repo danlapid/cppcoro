@@ -97,6 +97,18 @@
 # define CPPCORO_OS_LINUX 0
 #endif
 
+#if defined(__APPLE__)
+# define CPPCORO_OS_DARWIN 1
+#else
+# define CPPCORO_OS_DARWIN 0
+#endif
+
+#if defined(__FreeBSD__)
+# define CPPCORO_OS_FREEBSD 1
+#else
+# define CPPCORO_OS_FREEBSD 0
+#endif
+
 /////////////////////////////////////////////////////////////////////////////
 // CPU Detection
 

@@ -241,7 +241,7 @@ namespace cppcoro
 
 	};
 
-#elif CPPCORO_OS_LINUX
+#elif CPPCORO_OS_LINUX || CPPCORO_OS_DARWIN
 	class io_service::timed_schedule_operation
 		: public detail::async_operation_cancellable<timed_schedule_operation>
 	{

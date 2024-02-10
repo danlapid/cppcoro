@@ -179,6 +179,20 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "Linux")
 		io_service.cpp
 	)
 	list(APPEND sources ${linuxSources} ${fileSources} ${socketNetSources})
+elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin")
+	set(darwinDetailIncludes
+		darwin.hpp
+	)
+	list(TRANSFORM darwinDetailIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/detail/")
+	list(APPEND detailIncludes ${darwinDetailIncludes})
+	list(APPEND netIncludes ${socketNetIncludes})
+
+	set(darwinSources
+		darwin.cpp
+		darwin_message_queue.cpp
+		io_service.cpp
+	)
+	list(APPEND sources ${darwinSources} ${fileSources} ${socketNetSources})
 endif()
 
 add_library(cppcoro
