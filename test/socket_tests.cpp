@@ -140,7 +140,7 @@ TEST_CASE("send/recv TCP/IPv4")
 
 		co_await connectingSocket.connect(listeningSocket.local_endpoint());
 
-		auto receive = [](socket sock) -> task<int>
+		auto receive = [sock = connectingSocket]() mutable -> task<int>
 		{
 			std::uint8_t buffer[100];
 			std::uint64_t totalBytesReceived = 0;
@@ -163,7 +163,7 @@ TEST_CASE("send/recv TCP/IPv4")
 			co_return 0;
 		};
 
-		auto send = [](socket sock) -> task<int>
+		auto send = [sock = connectingSocket]() mutable -> task<int>
 		{
 			std::uint8_t buffer[100];
 			for (std::uint64_t i = 0; i < 1000; i += sizeof(buffer))
@@ -185,7 +185,7 @@ TEST_CASE("send/recv TCP/IPv4")
 			co_return 0;
 		};
 
-		co_await when_all(send(connectingSocket), receive(connectingSocket));
+		co_await when_all(send(), receive());
 
 		co_await connectingSocket.disconnect();
 
@@ -255,8 +255,7 @@ TEST_CASE("send/recv TCP/IPv4 many connections")
 			while (true) {
 				auto acceptingSocket = socket::create_tcpv4(ioSvc);
 				co_await listeningSocket.accept(acceptingSocket, ct);
-				connectionScope.spawn(
-					handleConnection(std::move(acceptingSocket)));
+				connectionScope.spawn(handleConnection(std::move(acceptingSocket)));
 			}
 		}
 		catch (const cppcoro::operation_cancelled&)
@@ -283,7 +282,7 @@ TEST_CASE("send/recv TCP/IPv4 many connections")
 
 		co_await connectingSocket.connect(listeningSocket.local_endpoint());
 
-		auto receive = [](socket sock) -> task<>
+		auto receive = [sock = connectingSocket]() mutable -> task<>
 		{
 			std::uint8_t buffer[100];
 			std::uint64_t totalBytesReceived = 0;
@@ -304,7 +303,7 @@ TEST_CASE("send/recv TCP/IPv4 many connections")
 			CHECK(totalBytesReceived == 1000);
 		};
 
-		auto send = [](socket sock) -> task<>
+		auto send = [sock = connectingSocket]() mutable -> task<>
 		{
 			std::uint8_t buffer[100];
 			for (std::uint64_t i = 0; i < 1000; i += sizeof(buffer))
@@ -324,7 +323,7 @@ TEST_CASE("send/recv TCP/IPv4 many connections")
 			sock.close_send();
 		};
 
-		co_await when_all(send(connectingSocket), receive(connectingSocket));
+		co_await when_all(send(), receive());
 
 		co_await connectingSocket.disconnect();
 	};

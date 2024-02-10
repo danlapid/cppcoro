@@ -25,6 +25,7 @@ jobs:
             buildtype: Release,
             cxx: "g++-10",
             cxxver: 17,
+            generator: "Unix Makefiles",
           }
           - {
             name: "Linux g++ 10.2 C++20",
@@ -32,6 +33,7 @@ jobs:
             buildtype: Release,
             cxx: "g++-10",
             cxxver: 20,
+            generator: "Unix Makefiles",
           }
           - {
             name: "Linux g++ 11 C++17 Debug",
@@ -39,6 +41,7 @@ jobs:
             buildtype: Debug,
             cxx: "g++-11",
             cxxver: 17,
+            generator: "Unix Makefiles",
           }
           - {
             name: "Linux g++ 11 C++20 Debug",
@@ -46,6 +49,7 @@ jobs:
             buildtype: Release,
             cxx: "g++-11",
             cxxver: 20,
+            generator: "Unix Makefiles",
           }
           - {
             name: "Linux g++ 11 C++17",
@@ -53,6 +57,7 @@ jobs:
             buildtype: Debug,
             cxx: "g++-11",
             cxxver: 17,
+            generator: "Unix Makefiles",
           }
           - {
             name: "Linux g++ 11 C++20",
@@ -60,6 +65,7 @@ jobs:
             buildtype: Release,
             cxx: "g++-11",
             cxxver: 20,
+            generator: "Unix Makefiles",
           }
           - {
             name: "Linux g++ 12 C++17",
@@ -97,6 +103,7 @@ jobs:
             cxx_flags: -stdlib=libc++,
             exe_linker_flags: -lc++,
             cxxver: 17,
+            generator: "Unix Makefiles",
           }
           - {
             name: "Linux clang-10 C++20",
@@ -106,6 +113,7 @@ jobs:
             cxx_flags: -stdlib=libc++,
             exe_linker_flags: -lc++,
             cxxver: 20,
+            generator: "Unix Makefiles",
           }
           - {
             name: "Linux clang-11 C++17",
@@ -115,6 +123,7 @@ jobs:
             cxx_flags: -stdlib=libc++,
             exe_linker_flags: -lc++,
             cxxver: 17,
+            generator: "Unix Makefiles",
           }
           - {
             name: "Linux clang-11 C++20",
@@ -124,6 +133,7 @@ jobs:
             cxx_flags: -stdlib=libc++,
             exe_linker_flags: -lc++,
             cxxver: 20,
+            generator: "Unix Makefiles",
           }
           - {
             name: "Linux clang-12 C++17",
@@ -133,6 +143,7 @@ jobs:
             cxx_flags: -stdlib=libc++,
             exe_linker_flags: -lc++,
             cxxver: 17,
+            generator: "Unix Makefiles",
           }
           - {
             name: "Linux clang-12 C++20",
@@ -142,6 +153,7 @@ jobs:
             cxx_flags: -stdlib=libc++,
             exe_linker_flags: -lc++,
             cxxver: 20,
+            generator: "Unix Makefiles",
           }
           - {
             name: "Linux clang-13 C++17",
@@ -151,6 +163,7 @@ jobs:
             cxx_flags: -stdlib=libc++,
             exe_linker_flags: -lc++,
             cxxver: 17,
+            generator: "Unix Makefiles",
           }
           - {
             name: "Linux clang-13 C++20",
@@ -160,6 +173,7 @@ jobs:
             cxx_flags: -stdlib=libc++,
             exe_linker_flags: -lc++,
             cxxver: 20,
+            generator: "Unix Makefiles",
           }
           - {
             name: "Linux clang-14 C++17",
@@ -169,6 +183,7 @@ jobs:
             cxx_flags: -stdlib=libc++,
             exe_linker_flags: -lc++,
             cxxver: 17,
+            generator: "Unix Makefiles",
           }
           - {
             name: "Linux clang-14 C++20",
@@ -178,6 +193,7 @@ jobs:
             cxx_flags: -stdlib=libc++,
             exe_linker_flags: -lc++,
             cxxver: 20,
+            generator: "Unix Makefiles",
           }
           - {
             name: "Linux clang-15 C++17 Debug",
@@ -187,6 +203,7 @@ jobs:
             cxx_flags: -stdlib=libc++,
             exe_linker_flags: -lc++,
             cxxver: 17,
+            generator: "Unix Makefiles",
           }
           - {
             name: "Linux clang-15 C++20 Debug",
@@ -196,6 +213,7 @@ jobs:
             cxx_flags: -stdlib=libc++,
             exe_linker_flags: -lc++,
             cxxver: 20,
+            generator: "Unix Makefiles",
           }
           - {
             name: "Linux clang-15 C++17",
@@ -205,6 +223,7 @@ jobs:
             cxx_flags: -stdlib=libc++,
             exe_linker_flags: -lc++,
             cxxver: 17,
+            generator: "Unix Makefiles",
           }
           - {
             name: "Linux clang-15 C++20",
@@ -214,6 +233,7 @@ jobs:
             cxx_flags: -stdlib=libc++,
             exe_linker_flags: -lc++,
             cxxver: 20,
+            generator: "Unix Makefiles",
           }
           - {
             name: "Linux clang-16 C++17",
@@ -241,6 +261,7 @@ jobs:
             environment_script: "C:/Program Files (x86)/Microsoft Visual Studio/2017/Community/VC/Auxiliary/Build/vcvars64.bat",
             cxxver: 17,
             msvcver: 2017,
+            generator: "Visual Studio 15 2017",
           }
           - {
             name: "Windows MSVC 2017 (x64) C++20",
@@ -250,6 +271,7 @@ jobs:
             environment_script: "C:/Program Files (x86)/Microsoft Visual Studio/2017/Community/VC/Auxiliary/Build/vcvars64.bat",
             cxxver: 20,
             msvcver: 2017,
+            generator: "Visual Studio 15 2017",
           }
           - {
             name: "Windows MSVC 2019 (x64) C++17",
@@ -258,6 +280,7 @@ jobs:
             cxx: "cl",
             environment_script: "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/VC/Auxiliary/Build/vcvars64.bat",
             cxxver: 17,
+            generator: "Visual Studio 16 2019",
           }
           - {
             name: "Windows MSVC 2019 (x64) C++20",
@@ -266,6 +289,7 @@ jobs:
             cxx: "cl",
             environment_script: "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/VC/Auxiliary/Build/vcvars64.bat",
             cxxver: 20,
+            generator: "Visual Studio 16 2019",
           }
           - {
             name: "Windows MSVC 2022 (x64) C++17",
@@ -274,6 +298,7 @@ jobs:
             cxx: "cl",
             environment_script: "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Auxiliary/Build/vcvars64.bat",
             cxxver: 17,
+            generator: "Visual Studio 17 2022",
           }
           - {
             name: "Windows MSVC 2022 (x64) C++20",
@@ -282,6 +307,69 @@ jobs:
             cxx: "cl",
             environment_script: "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Auxiliary/Build/vcvars64.bat",
             cxxver: 20,
+            generator: "Visual Studio 17 2022",
+          }
+          - {
+            name: "Windows MinGW C++17 XP",
+            os: windows-2022,
+            buildtype: Release,
+            cxx: "i686-w64-mingw32-g++",
+            cxx_flags: "-D_WIN32_WINNT=0x0501",
+            exe_linker_flags: "-static",
+            cxxver: 17,
+            generator: "Unix Makefiles",
+          }
+          - {
+            name: "Windows MinGW C++20 XP",
+            os: windows-2022,
+            buildtype: Release,
+            cxx: "i686-w64-mingw32-g++",
+            cxx_flags: "-D_WIN32_WINNT=0x0501",
+            exe_linker_flags: "-static",
+            cxxver: 20,
+            generator: "Unix Makefiles",
+          }
+          - {
+            name: "Windows MinGW C++17",
+            os: windows-2022,
+            buildtype: Release,
+            cxx: "i686-w64-mingw32-g++",
+            exe_linker_flags: "-static",
+            cxxver: 17,
+            generator: "Unix Makefiles",
+          }
+          - {
+            name: "Windows MinGW C++20",
+            os: windows-2022,
+            buildtype: Release,
+            cxx: "i686-w64-mingw32-g++",
+            exe_linker_flags: "-static",
+            cxxver: 20,
+            generator: "Unix Makefiles",
+          }
+          - {
+            name: "MacOS 11 C++20",
+            os: macos-11,
+            buildtype: Release,
+            cxx: "clang++",
+            cxxver: 20,
+            generator: "Unix Makefiles",
+          }
+          - {
+            name: "MacOS 12 C++20",
+            os: macos-12,
+            buildtype: Release,
+            cxx: "clang++",
+            cxxver: 20,
+            generator: "Unix Makefiles",
+          }
+          - {
+            name: "MacOS 13 C++20",
+            os: macos-13,
+            buildtype: Release,
+            cxx: "clang++",
+            cxxver: 20,
+            generator: "Unix Makefiles",
           }
           - {
             name: "Msys2/CLANG",
@@ -322,7 +410,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
-    
+
     - name: "Install Msys2"
       if: (startsWith(matrix.config.os, 'windows-2019') && contains(matrix.config.mingw, 'MINGW'))
       uses: msys2/setup-msys2@v2
@@ -458,6 +546,16 @@ jobs:
         choco install visualstudio2017-workload-nativedesktop
         choco install visualstudio2017-workload-vctools
 
+    - name: Install MinGW
+      id: install_mingw_x86
+      if: startsWith(matrix.config.os, 'windows-2022') && ( matrix.config.cxx == 'i686-w64-mingw32-g++' )
+      shell: bash
+      working-directory: ${{ env.HOME }}
+      run: |
+        choco uninstall strawberryperl --force
+        choco install mingw --version=11.2.0.07112021 --x86
+        choco install make
+
     - name: MSYS2 - Configure, Build & Test
       id: install_msys2
       if: (startsWith(matrix.config.os, 'windows-2019') && contains(matrix.config.mingw, 'MINGW'))
@@ -485,10 +583,11 @@ jobs:
       # access regardless of the host operating system
       shell: bash
       working-directory: ${{runner.workspace}}/build
-      env: 
+      env:
         CXX: ${{ matrix.config.cxx }}
-      # Note the current convention is to use the -S and -B options here to specify source 
-      # and build directories, but this is only available with CMake 3.13 and higher.  
+        CMAKE_GENERATOR: ${{ matrix.config.generator }}
+      # Note the current convention is to use the -S and -B options here to specify source
+      # and build directories, but this is only available with CMake 3.13 and higher.
       # The CMake binaries on the Github Actions machines are (as of this writing) 3.12
       run: |
         # run environment setup script if any
@@ -513,6 +612,6 @@ jobs:
       if: (!contains(matrix.config.mingw, 'MINGW'))
       working-directory: ${{runner.workspace}}/build
       shell: bash
-      # Execute tests defined by the CMake configuration.  
+      # Execute tests defined by the CMake configuration.
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       run: ctest --output-on-failure -C ${{ matrix.config.buildtype }}

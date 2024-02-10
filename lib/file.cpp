@@ -14,10 +14,17 @@
 #  define WIN32_LEAN_AND_MEAN
 # endif
 # include <windows.h>
+#elif CPPCORO_OS_LINUX
+# include <fcntl.h>
+# include <sys/stat.h>
+# include <sys/types.h>
+# include <unistd.h>
 #endif
 
 cppcoro::file::~file()
-{}
+{
+	m_ioService->get_io_context().remove_handle(m_fileHandle.handle());
+}
 
 std::uint64_t cppcoro::file::size() const
 {
@@ -38,7 +45,7 @@ std::uint64_t cppcoro::file::size() const
 	return size.QuadPart;
 #elif CPPCORO_OS_LINUX
 	struct stat sb;
-	if (fstat(m_fileData.fd.fd(), &sb) < 0)
+	if (fstat(m_fileHandle.handle(), &sb) < 0)
 	{
 		throw std::system_error
 		{
@@ -52,14 +59,18 @@ std::uint64_t cppcoro::file::size() const
 #endif
 }
 
-#if CPPCORO_OS_WINNT
-cppcoro::file::file(detail::win32::safe_handle&& fileHandle) noexcept
+cppcoro::file::file(cppcoro::detail::safe_file_handle_t fileHandle, cppcoro::io_service* ioService)
 	: m_fileHandle(std::move(fileHandle))
+	, m_ioService(ioService)
 {
+	// Associate with the I/O service's completion port.
+	m_ioService->get_io_context().add_handle(m_fileHandle.handle());
 }
 
-cppcoro::detail::win32::safe_handle cppcoro::file::open(
-	detail::win32::dword_t fileAccess,
+
+#if CPPCORO_OS_WINNT
+cppcoro::file cppcoro::file::open(
+	int fileAccess,
 	io_service& ioService,
 	const cppcoro::filesystem::path& path,
 	file_open_mode openMode,
@@ -123,10 +134,10 @@ cppcoro::detail::win32::safe_handle cppcoro::file::open(
 	}
 
 	// Open the file
-	detail::win32::safe_handle fileHandle(
+	detail::safe_file_handle_t fileHandle(
 		::CreateFileW(
 			path.wstring().c_str(),
-			fileAccess,
+			static_cast<detail::win32::dword_t>(fileAccess),
 			shareFlags,
 			nullptr,
 			creationDisposition,
@@ -143,55 +154,15 @@ cppcoro::detail::win32::safe_handle cppcoro::file::open(
 		};
 	}
 
-	// Associate with the I/O service's completion port.
-	const HANDLE result = ::CreateIoCompletionPort(
-		fileHandle.handle(),
-		ioService.native_iocp_handle(),
-		0,
-		0);
-	if (result == nullptr)
-	{
-		const DWORD errorCode = ::GetLastError();
-		throw std::system_error
-		{
-			static_cast<int>(errorCode),
-			std::system_category(),
-			"error opening file: CreateIoCompletionPort"
-		};
-	}
-
-	// Configure I/O operations to avoid dispatching a completion event
-	// to the I/O service if the operation completes synchronously.
-	// This avoids unnecessary suspension/resuption of the awaiting coroutine.
-	const BOOL ok = ::SetFileCompletionNotificationModes(
-		fileHandle.handle(),
-		FILE_SKIP_COMPLETION_PORT_ON_SUCCESS |
-		FILE_SKIP_SET_EVENT_ON_HANDLE);
-	if (!ok)
-	{
-		const DWORD errorCode = ::GetLastError();
-		throw std::system_error
-		{
-			static_cast<int>(errorCode),
-			std::system_category(),
-			"error opening file: SetFileCompletionNotificationModes"
-		};
-	}
-
-	return std::move(fileHandle);
+	return { std::move(fileHandle), &ioService };
 }
 
 #elif CPPCORO_OS_LINUX
 
-cppcoro::file::file(detail::linux::safe_file_data &&fileData) noexcept
-	: m_fileData(std::move(fileData))
-{
-}
-
-cppcoro::detail::linux::safe_file_data cppcoro::file::open(
+cppcoro::file cppcoro::file::open(
 	int fileAccess,
-	io_service &ioService,
-	const std::filesystem::path &path,
+	io_service& ioService,
+	const std::filesystem::path& path,
 	cppcoro::file_open_mode openMode,
 	cppcoro::file_share_mode shareMode,
 	cppcoro::file_buffering_mode bufferingMode)
@@ -239,9 +210,9 @@ cppcoro::detail::linux::safe_file_data cppcoro::file::open(
 		break;
 	}
 
-	cppcoro::detail::linux::safe_fd fd(
+	cppcoro::detail::safe_file_handle_t fd(
 		::open(path.c_str(), flags | O_NONBLOCK, S_IRWXU | S_IRWXG));
-	if (fd.fd() < 0)
+	if (fd.handle() < 0)
 	{
 		throw std::system_error
 		{
@@ -252,7 +223,6 @@ cppcoro::detail::linux::safe_file_data cppcoro::file::open(
 	}
 
 	//posix_fadvise(fd.get(), 0, 0, advice);
-
-	return {std::move(fd), ioService.get_mq()};
+	return { std::move(fd), &ioService };
 }
 #endif

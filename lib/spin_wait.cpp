@@ -54,8 +54,8 @@ namespace cppcoro
 			const std::uint32_t loopCount = 2u << m_count;
 			for (std::uint32_t i = 0; i < loopCount; ++i)
 			{
-				::YieldProcessor();
-				::YieldProcessor();
+				YieldProcessor();
+				YieldProcessor();
 			}
 		}
 		else

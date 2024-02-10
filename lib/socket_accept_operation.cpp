@@ -5,12 +5,16 @@
 
 #include <cppcoro/net/socket_accept_operation.hpp>
 #include <cppcoro/net/socket.hpp>
+#include <cppcoro/io_service.hpp>
 
 #include "socket_helpers.hpp"
 
 #include <system_error>
 
 #if CPPCORO_OS_WINNT
+# ifndef WIN32_LEAN_AND_MEAN
+#  define WIN32_LEAN_AND_MEAN
+# endif
 # include <winsock2.h>
 # include <ws2tcpip.h>
 # include <mswsock.h>
@@ -20,18 +24,13 @@
 // and socket_accept_operation_cancellable.
 
 bool cppcoro::net::socket_accept_operation_impl::try_start(
-	cppcoro::detail::win32_overlapped_operation_base& operation) noexcept
+	cppcoro::detail::async_operation_base& operation) noexcept
 {
+	operation.m_handle = reinterpret_cast<HANDLE>(m_listeningSocket.native_handle());
 	static_assert(
 		(sizeof(m_addressBuffer) / 2) >= (16 + sizeof(SOCKADDR_IN)) &&
 		(sizeof(m_addressBuffer) / 2) >= (16 + sizeof(SOCKADDR_IN6)),
 		"AcceptEx requires address buffer to be at least 16 bytes more than largest address.");
-
-	// Need to read this flag before starting the operation, otherwise
-	// it may be possible that the operation will complete immediately
-	// on another thread and then destroy the socket before we get a
-	// chance to read it.
-	const bool skipCompletionOnSuccess = m_listeningSocket.skip_completion_on_success();
 
 	DWORD bytesReceived = 0;
 	BOOL ok = ::AcceptEx(
@@ -52,25 +51,28 @@ bool cppcoro::net::socket_accept_operation_impl::try_start(
 			return false;
 		}
 	}
-	else if (skipCompletionOnSuccess)
-	{
-		operation.m_errorCode = ERROR_SUCCESS;
-		return false;
-	}
+	operation.m_completeFunc = [&]() {
+		cppcoro::detail::win32::dword_t numberOfBytesTransferred = 0;
+		cppcoro::detail::win32::dword_t flags = 0;
+		cppcoro::detail::win32::bool_t ok = WSAGetOverlappedResult(
+			m_listeningSocket.native_handle(),
+			operation.get_overlapped(),
+			&numberOfBytesTransferred,
+			0,
+			&flags
+		);
+		if (ok) {
+			return std::make_tuple(static_cast<cppcoro::detail::win32::dword_t>(ERROR_SUCCESS), numberOfBytesTransferred);
+		} else {
+			return std::make_tuple(static_cast<cppcoro::detail::win32::dword_t>(WSAGetLastError()), numberOfBytesTransferred);
+		}
+	};
 
 	return true;
 }
 
-void cppcoro::net::socket_accept_operation_impl::cancel(
-	cppcoro::detail::win32_overlapped_operation_base& operation) noexcept
-{
-	(void)::CancelIoEx(
-		reinterpret_cast<HANDLE>(m_listeningSocket.native_handle()),
-		operation.get_overlapped());
-}
-
 void cppcoro::net::socket_accept_operation_impl::get_result(
-	cppcoro::detail::win32_overlapped_operation_base& operation)
+	cppcoro::detail::async_operation_base& operation)
 {
 	if (operation.m_errorCode != ERROR_SUCCESS)
 	{
@@ -131,31 +133,24 @@ void cppcoro::net::socket_accept_operation_impl::get_result(
 # include <netinet/tcp.h>
 # include <netinet/udp.h>
 bool cppcoro::net::socket_accept_operation_impl::try_start(
-	cppcoro::detail::linux_async_operation_base& operation) noexcept
+	cppcoro::detail::async_operation_base& operation) noexcept
 {
+	operation.m_fd = m_listeningSocket.native_handle();
 	static_assert(
 		(sizeof(m_addressBuffer) / 2) >= (16 + sizeof(sockaddr_in)) &&
 		(sizeof(m_addressBuffer) / 2) >= (16 + sizeof(sockaddr_in6)),
 		"AcceptEx requires address buffer to be at least 16 bytes more than largest address.");
 
-	operation.m_completeFunc = [=]() {
+	operation.m_completeFunc = [&]() {
 		socklen_t len = sizeof(m_addressBuffer) / 2;
-		int res = accept(m_listeningSocket.native_handle(), reinterpret_cast<sockaddr*>(m_addressBuffer), &len);
-		operation.m_mq->remove_fd_watch(m_listeningSocket.native_handle());
-		return res;
+		return accept(m_listeningSocket.native_handle(), reinterpret_cast<sockaddr*>(m_addressBuffer), &len);
 	};
-	operation.m_mq->add_fd_watch(m_listeningSocket.native_handle(), reinterpret_cast<void*>(&operation), EPOLLIN);
+	operation.m_ioService->get_io_context().watch_handle(m_listeningSocket.native_handle(), reinterpret_cast<void*>(&operation), cppcoro::detail::watch_type::readable);
 	return true;
 }
 
-void cppcoro::net::socket_accept_operation_impl::cancel(
-	cppcoro::detail::linux_async_operation_base& operation) noexcept
-{
-	operation.m_mq->remove_fd_watch(m_listeningSocket.native_handle());
-}
-
 void cppcoro::net::socket_accept_operation_impl::get_result(
-	cppcoro::detail::linux_async_operation_base& operation)
+	cppcoro::detail::async_operation_base& operation)
 {
 	if (operation.m_res < 0)
 	{
@@ -166,7 +161,7 @@ void cppcoro::net::socket_accept_operation_impl::get_result(
 		};
 	}
 
-	m_acceptingSocket = socket(operation.m_res, m_acceptingSocket.m_mq);
+	m_acceptingSocket = socket(operation.m_res, m_acceptingSocket.m_ioService);
 	sockaddr* remoteSockaddr = reinterpret_cast<sockaddr*>(m_addressBuffer);
 	sockaddr* localSockaddr = reinterpret_cast<sockaddr*>(m_addressBuffer + sizeof(m_addressBuffer)/2);
 

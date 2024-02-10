@@ -12,12 +12,15 @@
 #endif
 
 #include <utility>
+#include <functional>
 #include <cstdint>
+#include <tuple>
 
 struct _OVERLAPPED;
 
 namespace cppcoro
 {
+	class io_service;
 	namespace detail
 	{
 		namespace win32
@@ -28,6 +31,7 @@ namespace cppcoro
 			using dword_t = unsigned long;
 			using socket_t = std::uintptr_t;
 			using ulong_t = unsigned long;
+			using bool_t = int;
 
 #if CPPCORO_COMPILER_MSVC
 # pragma warning(push)
@@ -72,38 +76,28 @@ namespace cppcoro
 				char* buf;
 			};
 
-			struct io_state : win32::overlapped
+			struct io_state : overlapped
 			{
-				using callback_type = void(
-					io_state* state,
-					win32::dword_t errorCode,
-					win32::dword_t numberOfBytesTransferred,
-					win32::ulongptr_t completionKey);
 
-				io_state(callback_type* callback = nullptr) noexcept
-					: io_state(std::uint64_t(0), callback)
+				explicit io_state(io_service* ioService) noexcept
+					: overlapped{0}
+					, m_ioService(ioService)
+					, m_handle(nullptr)
+					, m_errorCode(0)
+					, m_numberOfBytesTransferred(0)
+					, m_completeFunc([]{ return std::make_tuple<dword_t, dword_t>(0,0); })
 				{}
 
-				io_state(void* pointer, callback_type* callback) noexcept
-					: m_callback(callback)
-				{
-					this->Internal = 0;
-					this->InternalHigh = 0;
-					this->Pointer = pointer;
-					this->hEvent = nullptr;
-				}
+				_OVERLAPPED* get_overlapped() noexcept;
+				std::size_t get_result();
+				void on_operation_completed_base();
+				void cancel() noexcept;
 
-				io_state(std::uint64_t offset, callback_type* callback) noexcept
-					: m_callback(callback)
-				{
-					this->Internal = 0;
-					this->InternalHigh = 0;
-					this->Offset = static_cast<dword_t>(offset);
-					this->OffsetHigh = static_cast<dword_t>(offset >> 32);
-					this->hEvent = nullptr;
-				}
-
-				callback_type* m_callback;
+				io_service* m_ioService;
+				handle_t m_handle;
+				dword_t m_errorCode;
+				dword_t m_numberOfBytesTransferred;
+				std::function<std::tuple<dword_t, dword_t>()> m_completeFunc;
 			};
 
 			class safe_handle
@@ -172,6 +166,9 @@ namespace cppcoro
 				handle_t m_handle;
 
 			};
+
+			safe_handle create_waitable_timer_event();
+			safe_handle create_auto_reset_event();
 		}
 	}
 }

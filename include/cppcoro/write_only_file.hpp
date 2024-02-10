@@ -54,12 +54,7 @@ namespace cppcoro
 			file_buffering_mode bufferingMode = file_buffering_mode::default_);
 
 	protected:
-
-#if CPPCORO_OS_WINNT
-		write_only_file(detail::win32::safe_handle&& fileHandle) noexcept;
-#elif CPPCORO_OS_LINUX
- 		write_only_file(detail::linux::safe_file_data&& fileData) noexcept;
-#endif
+		write_only_file(file&& other) noexcept;
 
 	};
 }

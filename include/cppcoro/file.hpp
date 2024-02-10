@@ -7,17 +7,13 @@
 
 #include <cppcoro/config.hpp>
 
+#include <cppcoro/filesystem.hpp>
 #include <cppcoro/file_open_mode.hpp>
 #include <cppcoro/file_share_mode.hpp>
 #include <cppcoro/file_buffering_mode.hpp>
 
-#if CPPCORO_OS_WINNT
-# include <cppcoro/detail/win32.hpp>
-#elif CPPCORO_OS_LINUX
-# include <cppcoro/detail/linux.hpp>
-#endif
+#include <cppcoro/detail/platform.hpp>
 
-#include <cppcoro/filesystem.hpp>
 
 namespace cppcoro
 {
@@ -26,32 +22,17 @@ namespace cppcoro
 	class file
 	{
 	public:
-
-		file(file&& other) noexcept = default;
-
+ 		file(const file& other) noexcept = delete;
+ 		file& operator=(const file& other) noexcept = delete;
+ 		file(file&& other) noexcept = default;
+ 		file& operator=(file&& other) noexcept = default;
 		virtual ~file();
-
 		/// Get the size of the file in bytes.
 		std::uint64_t size() const;
 
 	protected:
 
-#if CPPCORO_OS_WINNT
-		file(detail::win32::safe_handle&& fileHandle) noexcept;
-
-		static detail::win32::safe_handle open(
-			detail::win32::dword_t fileAccess,
-			io_service& ioService,
-			const cppcoro::filesystem::path& path,
-			file_open_mode openMode,
-			file_share_mode shareMode,
-			file_buffering_mode bufferingMode);
-
-		detail::win32::safe_handle m_fileHandle;
-#elif CPPCORO_OS_LINUX
- 		file(detail::linux::safe_file_data&& fileData) noexcept;
-
- 		static detail::linux::safe_file_data open(
+ 		static file open(
  			int fileAccess,
  			io_service& ioService,
  			const std::filesystem::path& path,
@@ -59,9 +40,10 @@ namespace cppcoro
  			file_share_mode shareMode,
  			file_buffering_mode bufferingMode);
 
- 		detail::linux::safe_file_data m_fileData;
-#endif
+		file(detail::safe_file_handle_t fileHandle, io_service* ioService);
 
+ 		detail::safe_file_handle_t m_fileHandle;
+		io_service* m_ioService;
 	};
 }
 

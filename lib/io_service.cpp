@@ -5,6 +5,7 @@
 
 #include <cppcoro/io_service.hpp>
 #include <cppcoro/on_scope_exit.hpp>
+#include <cppcoro/detail/async_operation.hpp>
 
 #include <system_error>
 #include <cassert>
@@ -19,72 +20,12 @@
 # ifndef NOMINMAX
 #  define NOMINMAX
 # endif
-# include <winsock2.h>
-# include <ws2tcpip.h>
-# include <mswsock.h>
 # include <windows.h>
 #elif CPPCORO_OS_LINUX
- typedef long long int LONGLONG;
- typedef int DWORD;
-# define INFINITE (DWORD)-1 //needed for timeout values in io_service::timer_thread_state::run()
+# include <sys/timerfd.h>
 #endif
 
-namespace
-{
 #if CPPCORO_OS_WINNT
-	cppcoro::detail::win32::safe_handle create_io_completion_port(std::uint32_t concurrencyHint)
-	{
-		HANDLE handle = ::CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, concurrencyHint);
-		if (handle == NULL)
-		{
-			DWORD errorCode = ::GetLastError();
-			throw std::system_error
-			{
-				static_cast<int>(errorCode),
-				std::system_category(),
-				"Error creating io_service: CreateIoCompletionPort"
-			};
-		}
-
-		return cppcoro::detail::win32::safe_handle{ handle };
-	}
-
-	cppcoro::detail::win32::safe_handle create_auto_reset_event()
-	{
-		HANDLE eventHandle = ::CreateEventW(nullptr, FALSE, FALSE, nullptr);
-		if (eventHandle == NULL)
-		{
-			const DWORD errorCode = ::GetLastError();
-			throw std::system_error
-			{
-				static_cast<int>(errorCode),
-				std::system_category(),
-				"Error creating manual reset event: CreateEventW"
-			};
-		}
-
-		return cppcoro::detail::win32::safe_handle{ eventHandle };
-	}
-
-	cppcoro::detail::win32::safe_handle create_waitable_timer_event()
-	{
-		const BOOL isManualReset = FALSE;
-		HANDLE handle = ::CreateWaitableTimerW(nullptr, isManualReset, nullptr);
-		if (handle == nullptr)
-		{
-			const DWORD errorCode = ::GetLastError();
-			throw std::system_error
-			{
-				static_cast<int>(errorCode),
-				std::system_category()
-			};
-		}
-
-		return cppcoro::detail::win32::safe_handle{ handle };
-	}
-#endif
-}
-
 /// \brief
 /// A queue of pending timers that supports efficiently determining
 /// and dequeueing the earliest-due timers in the queue.
@@ -314,14 +255,8 @@ public:
 
 	void wake_up_timer_thread() noexcept;
 
-#if CPPCORO_OS_WINNT
 	detail::win32::safe_handle m_wakeUpEvent;
 	detail::win32::safe_handle m_waitableTimerEvent;
-#elif CPPCORO_OS_LINUX
-	detail::linux::safe_fd m_wakeupfd;
-	detail::linux::safe_fd m_timerfd;
-	detail::linux::safe_fd m_epollfd;
-#endif
 
 	std::atomic<io_service::timed_schedule_operation*> m_newlyQueuedTimers;
 	std::atomic<bool> m_timerCancellationRequested;
@@ -329,6 +264,7 @@ public:
 
 	std::thread m_thread;
 };
+#endif
 
 
 
@@ -340,15 +276,11 @@ cppcoro::io_service::io_service()
 cppcoro::io_service::io_service(std::uint32_t concurrencyHint)
 	: m_threadState(0)
 	, m_workCount(0)
-#if CPPCORO_OS_WINNT
-	, m_iocpHandle(create_io_completion_port(concurrencyHint))
-	, m_winsockInitialised(false)
-	, m_winsockInitialisationMutex()
-#elif CPPCORO_OS_LINUX
-	, m_mq()
-#endif
+	, m_mq(concurrencyHint)
 	, m_scheduleOperations(nullptr)
+#if CPPCORO_OS_WINNT
 	, m_timerState(nullptr)
+#endif
 {
 }
 
@@ -357,15 +289,8 @@ cppcoro::io_service::~io_service()
 	assert(m_scheduleOperations.load(std::memory_order_relaxed) == nullptr);
 	assert(m_threadState.load(std::memory_order_relaxed) < active_thread_count_increment);
 
-	delete m_timerState.load(std::memory_order_relaxed);
-
 #if CPPCORO_OS_WINNT
-	if (m_winsockInitialised.load(std::memory_order_relaxed))
-	{
-		// TODO: Should we be checking return-code here?
-		// Don't want to throw from the destructor, so perhaps just log an error?
-		(void)::WSACleanup();
-	}
+	delete m_timerState.load(std::memory_order_relaxed);
 #endif
 }
 
@@ -482,55 +407,18 @@ void cppcoro::io_service::notify_work_finished() noexcept
 	}
 }
 
-#if CPPCORO_OS_WINNT
-cppcoro::detail::win32::handle_t cppcoro::io_service::native_iocp_handle() noexcept
+cppcoro::detail::message_queue& cppcoro::io_service::get_io_context() noexcept
 {
-	return m_iocpHandle.handle();
+	return m_mq;
 }
-
-void cppcoro::io_service::ensure_winsock_initialised()
-{
-	if (!m_winsockInitialised.load(std::memory_order_acquire))
-	{
-		std::lock_guard<std::mutex> lock(m_winsockInitialisationMutex);
-		if (!m_winsockInitialised.load(std::memory_order_acquire))
-		{
-			const WORD requestedVersion = MAKEWORD(2, 2);
-			WSADATA winsockData;
-			const int result = ::WSAStartup(requestedVersion, &winsockData);
-			if (result == SOCKET_ERROR)
-			{
-				const int errorCode = ::WSAGetLastError();
-				throw std::system_error(
-					errorCode,
-					std::system_category(),
-					"Error initialsing winsock: WSAStartup");
-			}
-
-			m_winsockInitialised.store(true, std::memory_order_release);
-		}
-	}
-}
-
-#elif CPPCORO_OS_LINUX
-cppcoro::detail::linux::message_queue* cppcoro::io_service::get_mq() noexcept
-{
-	return &m_mq;
-}
-#endif
 
 void cppcoro::io_service::schedule_impl(schedule_operation* operation) noexcept
 {
-#if CPPCORO_OS_WINNT
-	const BOOL ok = ::PostQueuedCompletionStatus(
-		m_iocpHandle.handle(),
-		0,
-		reinterpret_cast<ULONG_PTR>(operation->m_awaiter.address()),
-		nullptr);
-#elif CPPCORO_OS_LINUX
-	const bool ok = m_mq.enqueue_message(reinterpret_cast<void*>(operation->m_awaiter.address()),
-		detail::linux::RESUME_TYPE);
-#endif
+	const bool ok = m_mq.enqueue_message(
+		{
+			detail::message_type::RESUME_TYPE,
+			reinterpret_cast<void*>(operation->m_awaiter.address()),
+		});
 	if (!ok)
 	{
 		// Failed to post to the I/O completion port.
@@ -558,16 +446,10 @@ void cppcoro::io_service::try_reschedule_overflow_operations() noexcept
 	while (operation != nullptr)
 	{
 		auto* next = operation->m_next;
-#if CPPCORO_OS_WINNT
-		BOOL ok = ::PostQueuedCompletionStatus(
-			m_iocpHandle.handle(),
-			0,
-			reinterpret_cast<ULONG_PTR>(operation->m_awaiter.address()),
-			nullptr);
-#elif CPPCORO_OS_LINUX
- 		bool ok = m_mq.enqueue_message(reinterpret_cast<void*>(operation->m_awaiter.address()),
- 			detail::linux::RESUME_TYPE);
-#endif
+ 		bool ok = m_mq.enqueue_message({
+				detail::message_type::RESUME_TYPE,
+				reinterpret_cast<void*>(operation->m_awaiter.address()),
+			});
 		if (!ok)
 		{
 			// Still unable to queue these operations.
@@ -623,132 +505,52 @@ bool cppcoro::io_service::try_process_one_event(bool waitForEvent)
 	{
 		return false;
 	}
-
-#if CPPCORO_OS_WINNT
-	const DWORD timeout = waitForEvent ? INFINITE : 0;
-
-	while (true)
-	{
-		// Check for any schedule_operation objects that were unable to be
-		// queued to the I/O completion port and try to requeue them now.
-		try_reschedule_overflow_operations();
-
-		DWORD numberOfBytesTransferred = 0;
-		ULONG_PTR completionKey = 0;
-		LPOVERLAPPED overlapped = nullptr;
-		BOOL ok = ::GetQueuedCompletionStatus(
-			m_iocpHandle.handle(),
-			&numberOfBytesTransferred,
-			&completionKey,
-			&overlapped,
-			timeout);
-		if (overlapped != nullptr)
-		{
-			DWORD errorCode = ok ? ERROR_SUCCESS : ::GetLastError();
-
-			auto* state = static_cast<detail::win32::io_state*>(
-				reinterpret_cast<detail::win32::overlapped*>(overlapped));
-
-			state->m_callback(
-				state,
-				errorCode,
-				numberOfBytesTransferred,
-				completionKey);
-
-			return true;
-		}
-		else if (ok)
-		{
-			if (completionKey != 0)
-			{
-				// This was a coroutine scheduled via a call to
-				// io_service::schedule().
-				cppcoro::coroutine_handle<>::from_address(
-					reinterpret_cast<void*>(completionKey)).resume();
-				return true;
-			}
-
-			// Empty event is a wake-up request, typically associated with a
-			// request to exit the event loop.
-			// However, there may be spurious such events remaining in the queue
-			// from a previous call to stop() that has since been reset() so we
-			// need to check whether stop is still required.
-			if (is_stop_requested())
-			{
-				return false;
-			}
-		}
-		else
-		{
-			const DWORD errorCode = ::GetLastError();
-			if (errorCode == WAIT_TIMEOUT)
-			{
-				return false;
-			}
-
-			throw std::system_error
-			{
-				static_cast<int>(errorCode),
-				std::system_category(),
-				"Error retrieving item from io_service queue: GetQueuedCompletionStatus"
-			};
-		}
-	}
-#elif CPPCORO_OS_LINUX
  	while (true)
  	{
  		try_reschedule_overflow_operations();
- 		void* message = NULL;
- 		detail::linux::message_type type = detail::linux::RESUME_TYPE;
-
- 		bool ok = m_mq.dequeue_message(message, type, waitForEvent);
+		detail::message message;
+ 		bool ok = m_mq.dequeue_message(message, waitForEvent);
 
  		if (!ok)
  		{
  			return false;
  		}
-
- 		if (type == detail::linux::CALLBACK_TYPE)
- 		{
- 			auto* state =
- 				static_cast<detail::linux
- 				::io_state*>(reinterpret_cast<detail::linux::io_state*>(message));
-
+		switch (message.type)
+		{
+		case detail::message_type::CALLBACK_TYPE:
+		{
+ 			auto* state = static_cast<detail::async_operation_base*>(message.data);
  			state->m_callback(state);
-
  			return true;
- 		}
- 		else
- 		{
- 			if ((unsigned long long)message != 0)
- 			{
- 				cppcoro::coroutine_handle<>::from_address(reinterpret_cast<void*>(message)).resume();
- 				return true;
- 			}
-
+		}
+		case detail::message_type::RESUME_TYPE:
+		{
+			cppcoro::coroutine_handle<>::from_address(message.data).resume();
+			return true;
+		}
+		case detail::message_type::WAKEUP_TYPE:
+		{
  			if (is_stop_requested())
  			{
  				return false;
  			}
- 		}
+			break;
+		}
+		}
  	}
-#endif
 }
 
 void cppcoro::io_service::post_wake_up_event() noexcept
 {
-#if CPPCORO_OS_WINNT
 	// We intentionally ignore the return code here.
 	//
 	// Assume that if posting an event failed that it failed because the queue was full
 	// and the system is out of memory. In this case threads should find other events
 	// in the queue next time they check anyway and thus wake-up.
-	(void)::PostQueuedCompletionStatus(m_iocpHandle.handle(), 0, 0, nullptr);
-#elif CPPCORO_OS_LINUX
- 	(void)m_mq.enqueue_message(NULL, detail::linux::RESUME_TYPE);
-#endif
+ 	(void)m_mq.enqueue_message({detail::message_type::WAKEUP_TYPE, NULL});
 }
 
+#if CPPCORO_OS_WINNT
 cppcoro::io_service::timer_thread_state*
 cppcoro::io_service::ensure_timer_thread_started()
 {
@@ -773,48 +575,13 @@ cppcoro::io_service::ensure_timer_thread_started()
 }
 
 cppcoro::io_service::timer_thread_state::timer_thread_state()
-#if CPPCORO_OS_WINNT
-	: m_wakeUpEvent(create_auto_reset_event())
-	, m_waitableTimerEvent(create_waitable_timer_event())
-#elif CPPCORO_OS_LINUX
- 	: m_wakeupfd(detail::linux::create_event_fd())
- 	, m_timerfd(detail::linux::create_timer_fd())
- 	, m_epollfd(detail::linux::create_epoll_fd())
-#endif
+	: m_wakeUpEvent(detail::win32::create_auto_reset_event())
+	, m_waitableTimerEvent(detail::win32::create_waitable_timer_event())
 	, m_newlyQueuedTimers(nullptr)
 	, m_timerCancellationRequested(false)
 	, m_shutDownRequested(false)
 	, m_thread([this] { this->run(); })
 {
-#if CPPCORO_OS_LINUX
- 	epoll_event wake_ev = { 0 };
- 	wake_ev.events = EPOLLIN;
- 	wake_ev.data.fd = m_wakeupfd.fd();
-
- 	if (epoll_ctl(m_epollfd.fd(), EPOLL_CTL_ADD, m_wakeupfd.fd(), &wake_ev) == -1)
- 	{
- 		throw std::system_error
- 		{
- 			static_cast<int>(errno),
- 			std::system_category(),
- 			"Error creating io_service: epoll ctl wake ev"
- 		};
- 	}
-
- 	epoll_event timer_ev = { 0 };
- 	timer_ev.events = EPOLLIN;
- 	timer_ev.data.fd = m_timerfd.fd();
-
- 	if (epoll_ctl(m_epollfd.fd(), EPOLL_CTL_ADD, m_timerfd.fd(), &timer_ev) == -1)
- 	{
- 		throw std::system_error
- 		{
- 			static_cast<int>(errno),
- 			std::system_category(),
- 			"Error creating io_service: epoll ctl timer ev"
- 		};
- 	}
-#endif
 }
 
 cppcoro::io_service::timer_thread_state::~timer_thread_state()
@@ -841,14 +608,12 @@ void cppcoro::io_service::timer_thread_state::run() noexcept
 
 	timer_queue timerQueue;
 
-#if CPPCORO_OS_WINNT
 	const DWORD waitHandleCount = 2;
 	const HANDLE waitHandles[waitHandleCount] =
 	{
 		m_wakeUpEvent.handle(),
 		m_waitableTimerEvent.handle()
 	};
-#endif
 
 	time_point lastSetWaitEventTime = time_point::max();
 
@@ -859,7 +624,6 @@ void cppcoro::io_service::timer_thread_state::run() noexcept
 		bool waitEvent = false;
  		bool timerEvent = false;
 		DWORD timeout = INFINITE;
-#if CPPCORO_OS_WINNT
 		const DWORD waitResult = ::WaitForMultipleObjectsEx(
 			waitHandleCount,
 			waitHandles,
@@ -874,23 +638,6 @@ void cppcoro::io_service::timer_thread_state::run() noexcept
  		{
  			timerEvent = true;
  		}
-#elif CPPCORO_OS_LINUX
- 		epoll_event ev;
- 		const int status = epoll_wait(m_epollfd.fd(), &ev, 1, timeout);
-
- 		if (status == 0 || status == -1 || (status == 1 && ev.data.fd == m_wakeupfd.fd()))
- 		{
- 			uint64_t count;
- 			(void)read(m_wakeupfd.fd(), &count, sizeof(uint64_t));
- 			waitEvent = true;
- 		}
- 		else if (status == 1 && ev.data.fd == m_timerfd.fd())
- 		{
- 			uint64_t count;
- 			(void)read(m_timerfd.fd(), &count, sizeof(uint64_t));
- 			timerEvent = true;
- 		}
- #endif
  		if (waitEvent)
 		{
 			// Wake-up event (WAIT_OBJECT_0)
@@ -953,7 +700,6 @@ void cppcoro::io_service::timer_thread_state::run() noexcept
 
 					auto timeUntilNextDueTime = earliestDueTime - currentTime;
 
- #if CPPCORO_OS_WINNT
 					// Negative value indicates relative time.
 					LARGE_INTEGER dueTime;
 					dueTime.QuadPart = -std::chrono::duration_cast<ticks>(timeUntilNextDueTime).count();
@@ -972,24 +718,6 @@ void cppcoro::io_service::timer_thread_state::run() noexcept
 						nullptr,
 						nullptr,
 						resumeFromSuspend);
-#elif CPPCORO_OS_LINUX
- 					itimerspec alarm_time = { 0 };
- 					alarm_time.it_value.tv_sec =
- 						std::chrono::
- 						duration_cast<std::chrono::
- 						seconds>(timeUntilNextDueTime).count();
- 					alarm_time.it_value.tv_nsec =
- 						(std::chrono::
- 							duration_cast<std::chrono::
- 							nanoseconds>(timeUntilNextDueTime).count() % 10000000);
- 					if (alarm_time.it_value.tv_sec == 0 && alarm_time.it_value.tv_nsec == 0)
- 					{
- 						//linux timer of 0 time will not generate events
- 						//so let's set it to 1 nsec
- 						alarm_time.it_value.tv_nsec = 1;
- 					}
-					const bool ok = timerfd_settime(m_timerfd.fd(), 0, &alarm_time, NULL) != -1;
-#endif
 					if (ok)
 					{
 						lastSetWaitEventTime = earliestDueTime;
@@ -1046,12 +774,7 @@ void cppcoro::io_service::timer_thread_state::run() noexcept
 
 void cppcoro::io_service::timer_thread_state::wake_up_timer_thread() noexcept
 {
-#if CPPCORO_OS_WINNT
 	(void)::SetEvent(m_wakeUpEvent.handle());
-#elif CPPCORO_OS_LINUX
- 	uint64_t count = 1;
- 	(void)write(m_wakeupfd.fd(), &count, sizeof(uint64_t));
-#endif
 }
 
 void cppcoro::io_service::schedule_operation::await_suspend(
@@ -1162,3 +885,49 @@ void cppcoro::io_service::timed_schedule_operation::await_resume()
 	m_cancellationRegistration.reset();
 	m_cancellationToken.throw_if_cancellation_requested();
 }
+
+#elif CPPCORO_OS_LINUX
+void cppcoro::io_service::schedule_operation::await_suspend(
+	cppcoro::coroutine_handle<> awaiter) noexcept
+{
+	m_awaiter = awaiter;
+	m_service.schedule_impl(this);
+}
+
+cppcoro::io_service::timed_schedule_operation::timed_schedule_operation(
+	io_service& service,
+	std::chrono::high_resolution_clock::time_point resumeTime,
+	cppcoro::cancellation_token&& ct) noexcept
+	: cppcoro::detail::async_operation_cancellable<timed_schedule_operation>(
+ 				&service, std::move(ct))
+	, m_resumeTime(resumeTime)
+ 	, m_timerfd(detail::linux::create_timer_fd())
+{}
+
+bool cppcoro::io_service::timed_schedule_operation::try_start() noexcept {
+	m_fd = m_timerfd.fd();
+	std::chrono::high_resolution_clock::time_point currentTime = std::chrono::high_resolution_clock::now();
+	auto waitTime = m_resumeTime - currentTime;
+	itimerspec alarm_time = { 0 };
+	if (waitTime.count() <= 0) {
+		//linux timer of 0 time will not generate events
+		//so let's set it to 1 nsec
+		alarm_time.it_value.tv_nsec = 1;
+	} else {
+		auto seconds = std::chrono::duration_cast<std::chrono::seconds>(waitTime);
+		auto nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(waitTime - seconds);
+		alarm_time.it_value.tv_sec = seconds.count();
+		alarm_time.it_value.tv_nsec = nanoseconds.count();
+	}
+	const bool ok = timerfd_settime(m_timerfd.fd(), 0, &alarm_time, NULL) != -1;
+	if (!ok) {
+		m_res = -errno;
+		return false;
+	}
+	m_completeFunc = [&]() {
+		return 0;
+	};
+	m_ioService->get_io_context().watch_handle(m_timerfd.fd(), reinterpret_cast<void*>(this), detail::watch_type::readable);
+	return true;
+}
+#endif

@@ -2,33 +2,32 @@
 // Copyright (c) Lewis Baker
 // Licenced under MIT license. See LICENSE.txt for details.
 ///////////////////////////////////////////////////////////////////////////////
+#include <system_error>
 
 #include <cppcoro/net/socket_recv_from_operation.hpp>
 #include <cppcoro/net/socket.hpp>
+#include <cppcoro/io_service.hpp>
 
 # include "socket_helpers.hpp"
 
 #if CPPCORO_OS_WINNT
+# ifndef WIN32_LEAN_AND_MEAN
+#  define WIN32_LEAN_AND_MEAN
+# endif
 # include <winsock2.h>
 # include <ws2tcpip.h>
-# include <mswsock.h>
 # include <windows.h>
 
 bool cppcoro::net::socket_recv_from_operation_impl::try_start(
-	cppcoro::detail::win32_overlapped_operation_base& operation) noexcept
+	cppcoro::detail::async_operation_base& operation) noexcept
 {
+	operation.m_handle = reinterpret_cast<HANDLE>(m_socket.native_handle());
 	static_assert(
 		sizeof(m_sourceSockaddrStorage) >= sizeof(SOCKADDR_IN) &&
 		sizeof(m_sourceSockaddrStorage) >= sizeof(SOCKADDR_IN6));
 	static_assert(
 		sockaddrStorageAlignment >= alignof(SOCKADDR_IN) &&
 		sockaddrStorageAlignment >= alignof(SOCKADDR_IN6));
-
-	// Need to read this flag before starting the operation, otherwise
-	// it may be possible that the operation will complete immediately
-	// on another thread, resume the coroutine and then destroy the
-	// socket before we get a chance to read it.
-	const bool skipCompletionOnSuccess = m_socket.skip_completion_on_success();
 
 	m_sourceSockaddrLength = sizeof(m_sourceSockaddrStorage);
 
@@ -55,29 +54,30 @@ bool cppcoro::net::socket_recv_from_operation_impl::try_start(
 			return false;
 		}
 	}
-	else if (skipCompletionOnSuccess)
-	{
-		// Completed synchronously, no completion event will be posted to the IOCP.
-		operation.m_errorCode = ERROR_SUCCESS;
-		operation.m_numberOfBytesTransferred = numberOfBytesReceived;
-		return false;
-	}
+	operation.m_completeFunc = [&]() {
+		cppcoro::detail::win32::dword_t numberOfBytesTransferred = 0;
+		cppcoro::detail::win32::dword_t flags = 0;
+		cppcoro::detail::win32::bool_t ok = WSAGetOverlappedResult(
+			m_socket.native_handle(),
+			operation.get_overlapped(),
+			&numberOfBytesTransferred,
+			0,
+			&flags
+		);
+		if (ok) {
+			return std::make_tuple(static_cast<cppcoro::detail::win32::dword_t>(ERROR_SUCCESS), numberOfBytesTransferred);
+		} else {
+			return std::make_tuple(static_cast<cppcoro::detail::win32::dword_t>(WSAGetLastError()), numberOfBytesTransferred);
+		}
+	};
 
 	// Operation will complete asynchronously.
 	return true;
 }
 
-void cppcoro::net::socket_recv_from_operation_impl::cancel(
-	cppcoro::detail::win32_overlapped_operation_base& operation) noexcept
-{
-	(void)::CancelIoEx(
-		reinterpret_cast<HANDLE>(m_socket.native_handle()),
-		operation.get_overlapped());
-}
-
 std::tuple<std::size_t, cppcoro::net::ip_endpoint>
 cppcoro::net::socket_recv_from_operation_impl::get_result(
-	cppcoro::detail::win32_overlapped_operation_base& operation)
+	cppcoro::detail::async_operation_base& operation)
 {
 	if (operation.m_errorCode != ERROR_SUCCESS)
 	{
@@ -99,8 +99,9 @@ cppcoro::net::socket_recv_from_operation_impl::get_result(
 # include <netinet/tcp.h>
 # include <netinet/udp.h>
 bool cppcoro::net::socket_recv_from_operation_impl::try_start(
-	cppcoro::detail::linux_async_operation_base& operation) noexcept
+	cppcoro::detail::async_operation_base& operation) noexcept
 {
+	operation.m_fd = m_socket.native_handle();
 	static_assert(
 		sizeof(m_sourceSockaddrStorage) >= sizeof(sockaddr_in) &&
 		sizeof(m_sourceSockaddrStorage) >= sizeof(sockaddr_in6));
@@ -109,28 +110,20 @@ bool cppcoro::net::socket_recv_from_operation_impl::try_start(
 		sockaddrStorageAlignment >= alignof(sockaddr_in6));
 	m_sourceSockaddrLength = sizeof(m_sourceSockaddrStorage);
 
-	operation.m_completeFunc = [=]() {
-		int res = recvfrom(
+	operation.m_completeFunc = [&]() {
+		return recvfrom(
 			m_socket.native_handle(), m_buffer, m_byteCount, MSG_TRUNC,
 			reinterpret_cast<sockaddr*>(&m_sourceSockaddrStorage),
 			reinterpret_cast<socklen_t*>(&m_sourceSockaddrLength)
 		);
-		operation.m_mq->remove_fd_watch(m_socket.native_handle());
-		return res;
 	};
-	operation.m_mq->add_fd_watch(m_socket.native_handle(), reinterpret_cast<void*>(&operation), EPOLLIN);
+	operation.m_ioService->get_io_context().watch_handle(m_socket.native_handle(), reinterpret_cast<void*>(&operation), cppcoro::detail::watch_type::readable);
 	return true;
-}
-
-void cppcoro::net::socket_recv_from_operation_impl::cancel(
-	cppcoro::detail::linux_async_operation_base& operation) noexcept
-{
-	operation.m_mq->remove_fd_watch(m_socket.native_handle());
 }
 
 std::tuple<std::size_t, cppcoro::net::ip_endpoint>
 cppcoro::net::socket_recv_from_operation_impl::get_result(
-	cppcoro::detail::linux_async_operation_base& operation)
+	cppcoro::detail::async_operation_base& operation)
 {
 	if (operation.m_res < 0)
 	{

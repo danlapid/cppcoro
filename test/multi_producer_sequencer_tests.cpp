@@ -24,6 +24,7 @@ DOCTEST_TEST_SUITE_BEGIN("multi_producer_sequencer");
 
 using namespace cppcoro;
 
+#if !CPPCORO_OS_WINNT || CPPCORO_OS_WINNT >= 0x0600
 namespace
 {
 	task<> one_at_a_time_producer(
@@ -201,5 +202,6 @@ DOCTEST_TEST_CASE("two producers (single) / single consumer")
 
 	CHECK(result == expectedResult);
 }
+#endif
 
 DOCTEST_TEST_SUITE_END();

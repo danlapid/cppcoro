@@ -9,11 +9,9 @@
 #include <cppcoro/cancellation_token.hpp>
 #include <cppcoro/cancellation_registration.hpp>
 
-#if CPPCORO_OS_WINNT
-# include <cppcoro/detail/win32.hpp>
-#elif CPPCORO_OS_LINUX
-# include <cppcoro/detail/linux.hpp>
-#endif
+#include <cppcoro/detail/platform.hpp>
+#include <cppcoro/detail/async_operation.hpp>
+#include <cppcoro/detail/message_queue.hpp>
 
 #include <optional>
 #include <chrono>
@@ -134,17 +132,13 @@ namespace cppcoro
 
 		void notify_work_finished() noexcept;
 
-#if CPPCORO_OS_WINNT
-		detail::win32::handle_t native_iocp_handle() noexcept;
-		void ensure_winsock_initialised();
-#elif CPPCORO_OS_LINUX
-		detail::linux::message_queue* get_mq() noexcept;
-#endif
+		detail::message_queue& get_io_context() noexcept;
 
 	private:
-
+#if CPPCORO_OS_WINNT
 		class timer_thread_state;
 		class timer_queue;
+#endif
 
 		friend class schedule_operation;
 		friend class timed_schedule_operation;
@@ -160,7 +154,9 @@ namespace cppcoro
 
 		void post_wake_up_event() noexcept;
 
+#if CPPCORO_OS_WINNT
 		timer_thread_state* ensure_timer_thread_started();
+#endif
 
 		static constexpr std::uint32_t stop_requested_flag = 1;
 		static constexpr std::uint32_t active_thread_count_increment = 2;
@@ -171,23 +167,16 @@ namespace cppcoro
 
 		std::atomic<std::uint32_t> m_workCount;
 
-#if CPPCORO_OS_WINNT
-		detail::win32::safe_handle m_iocpHandle;
-
-		std::atomic<bool> m_winsockInitialised;
-		std::mutex m_winsockInitialisationMutex;
-
-#elif CPPCORO_OS_LINUX
- 		detail::linux::message_queue m_mq;
-#endif
+ 		detail::message_queue m_mq;
 
 		// Head of a linked-list of schedule operations that are
 		// ready to run but that failed to be queued to the I/O
 		// completion port (eg. due to low memory).
 		std::atomic<schedule_operation*> m_scheduleOperations;
 
+#if CPPCORO_OS_WINNT
 		std::atomic<timer_thread_state*> m_timerState;
-
+#endif
 	};
 
 	class io_service::schedule_operation
@@ -213,6 +202,7 @@ namespace cppcoro
 
 	};
 
+#if CPPCORO_OS_WINNT
 	class io_service::timed_schedule_operation
 	{
 	public:
@@ -250,6 +240,27 @@ namespace cppcoro
 		std::atomic<std::uint32_t> m_refCount;
 
 	};
+
+#elif CPPCORO_OS_LINUX
+	class io_service::timed_schedule_operation
+		: public detail::async_operation_cancellable<timed_schedule_operation>
+	{
+	public:
+
+		timed_schedule_operation(
+			io_service& service,
+			std::chrono::high_resolution_clock::time_point resumeTime,
+			cppcoro::cancellation_token&& ct) noexcept;
+
+ 	private:
+ 		friend class cppcoro::detail::async_operation_cancellable<timed_schedule_operation>;
+
+ 		bool try_start() noexcept;
+
+		std::chrono::high_resolution_clock::time_point m_resumeTime;
+	 	detail::safe_file_handle_t m_timerfd;
+	};
+#endif
 
 	class io_work_scope
 	{

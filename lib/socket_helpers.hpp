@@ -6,13 +6,6 @@
 #define CPPCORO_PRIVATE_SOCKET_HELPERS_HPP_INCLUDED
 
 #include <functional>
-#include <cppcoro/config.hpp>
-
-#if CPPCORO_OS_WINNT
-# include <cppcoro/detail/win32.hpp>
-#elif CPPCORO_OS_LINUX
-# include <cppcoro/detail/linux.hpp>
-#endif
 struct sockaddr;
 struct sockaddr_storage;
 

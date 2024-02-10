@@ -49,6 +49,7 @@ TEST_CASE("single waiter")
 	cppcoro::sync_wait(cppcoro::when_all_ready(run(), check()));
 }
 
+#if !CPPCORO_OS_WINNT || CPPCORO_OS_WINNT >= 0x0600
 TEST_CASE("multi-threaded")
 {
 	cppcoro::static_thread_pool tp;
@@ -89,5 +90,6 @@ TEST_CASE("multi-threaded")
 		}
 	}());
 }
+#endif
 
 TEST_SUITE_END();
