@@ -69,6 +69,9 @@ set(detailIncludes
 	sync_wait_task.hpp
 	unwrap_reference.hpp
 	lightweight_manual_reset_event.hpp
+	platform.hpp
+	message_queue.hpp
+	async_operation.hpp
 )
 list(TRANSFORM detailIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/detail/")
 
@@ -79,6 +82,18 @@ set(privateHeaders
 	spin_wait.hpp
 	spin_mutex.hpp
 )
+
+set(socketNetIncludes
+	socket.hpp
+	socket_accept_operation.hpp
+	socket_connect_operation.hpp
+	socket_disconnect_operation.hpp
+	socket_recv_operation.hpp
+	socket_recv_from_operation.hpp
+	socket_send_operation.hpp
+	socket_send_to_operation.hpp
+)
+list(TRANSFORM socketNetIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/net/")
 
 set(sources
 	async_auto_reset_event.cpp
@@ -101,104 +116,69 @@ set(sources
 	spin_mutex.cpp
 )
 
+set(fileSources
+	file.cpp
+	readable_file.cpp
+	writable_file.cpp
+	read_only_file.cpp
+	write_only_file.cpp
+	read_write_file.cpp
+	file_read_operation.cpp
+	file_write_operation.cpp
+)
+
+set(socketNetSources
+	socket_helpers.cpp
+	socket.cpp
+	socket_accept_operation.cpp
+	socket_connect_operation.cpp
+	socket_disconnect_operation.cpp
+	socket_send_operation.cpp
+	socket_send_to_operation.cpp
+	socket_recv_operation.cpp
+	socket_recv_from_operation.cpp
+)
+
 if(WIN32)
 	set(win32DetailIncludes
 		win32.hpp
-		win32_overlapped_operation.hpp
 	)
-    list(TRANSFORM win32DetailIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/detail/")
-    list(APPEND detailIncludes ${win32DetailIncludes})
+	list(TRANSFORM win32DetailIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/detail/")
+	list(APPEND detailIncludes ${win32DetailIncludes})
+	list(APPEND netIncludes ${socketNetIncludes})
 
-    set(win32NetIncludes
-        socket.hpp
-        socket_accept_operation.hpp
-        socket_connect_operation.hpp
-        socket_disconnect_operation.hpp
-        socket_recv_operation.hpp
-        socket_recv_from_operation.hpp
-        socket_send_operation.hpp
-        socket_send_to_operation.hpp
-    )
-    list(TRANSFORM win32NetIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/net/")
-    list(APPEND netIncludes ${win32NetIncludes})
+	set(win32Sources
+		win32.cpp
+		win32_message_queue.cpp
+		io_service.cpp
+	)
+	list(APPEND sources ${win32Sources} ${fileSources} ${socketNetSources})
 
-    set(win32Sources
-        win32.cpp
-        io_service.cpp
-        file.cpp
-        readable_file.cpp
-        writable_file.cpp
-        read_only_file.cpp
-        write_only_file.cpp
-        read_write_file.cpp
-        file_read_operation.cpp
-        file_write_operation.cpp
-        socket_helpers.cpp
-        socket.cpp
-        socket_accept_operation.cpp
-        socket_connect_operation.cpp
-        socket_disconnect_operation.cpp
-        socket_send_operation.cpp
-        socket_send_to_operation.cpp
-        socket_recv_operation.cpp
-        socket_recv_from_operation.cpp
-    )
-    list(APPEND sources ${win32Sources})
-
-	list(APPEND libraries Ws2_32 Mswsock Synchronization)
+	list(APPEND libraries ws2_32 mswsock synchronization)
 	if(MSVC)
 		list(APPEND compile_options /EHsc)
 	else()
 		list(APPEND compile_options -Wall)
-   	endif()
+	endif()
+	if("${MSVC_VERSION}" VERSION_GREATER_EQUAL 1900)
+	  # TODO remove this when experimental/non-experimental include are fixed
+	  list(APPEND compile_definition _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING=1)
+	endif()
 
-    if("${MSVC_VERSION}" VERSION_GREATER_EQUAL 1900)
-      # TODO remove this when experimental/non-experimental include are fixed
-      list(APPEND compile_definition _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING=1)
-    endif()
 elseif(CMAKE_SYSTEM_NAME MATCHES "Linux")
-    set(linuxDetailIncludes
-        linux.hpp
-        linux_async_operation.hpp
-    )
-    list(TRANSFORM linuxDetailIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/detail/")
-    list(APPEND detailIncludes ${linuxDetailIncludes})
+	set(linuxDetailIncludes
+		linux.hpp
+	)
+	list(TRANSFORM linuxDetailIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/detail/")
+	list(APPEND detailIncludes ${linuxDetailIncludes})
+	list(APPEND netIncludes ${socketNetIncludes})
 
-    set(linuxNetIncludes
-        socket.hpp
-        socket_accept_operation.hpp
-        socket_connect_operation.hpp
-        socket_disconnect_operation.hpp
-        socket_recv_operation.hpp
-        socket_recv_from_operation.hpp
-        socket_send_operation.hpp
-        socket_send_to_operation.hpp
-    )
-    list(TRANSFORM linuxNetIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/net/")
-    list(APPEND netIncludes ${linuxNetIncludes})
-
-    set(linuxSources
-        linux.cpp
-        io_service.cpp
-        file.cpp
-        readable_file.cpp
-        writable_file.cpp
-        read_only_file.cpp
-        write_only_file.cpp
-        read_write_file.cpp
-        file_read_operation.cpp
-        file_write_operation.cpp
-        socket_helpers.cpp
-        socket.cpp
-        socket_accept_operation.cpp
-        socket_connect_operation.cpp
-        socket_disconnect_operation.cpp
-        socket_send_operation.cpp
-        socket_send_to_operation.cpp
-        socket_recv_operation.cpp
-        socket_recv_from_operation.cpp
-    )
-    list(APPEND sources ${linuxSources})
+	set(linuxSources
+		linux.cpp
+		linux_message_queue.cpp
+		io_service.cpp
+	)
+	list(APPEND sources ${linuxSources} ${fileSources} ${socketNetSources})
 endif()
 
 add_library(cppcoro

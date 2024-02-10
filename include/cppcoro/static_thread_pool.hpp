@@ -5,6 +5,8 @@
 #ifndef CPPCORO_STATIC_THREAD_POOL_HPP_INCLUDED
 #define CPPCORO_STATIC_THREAD_POOL_HPP_INCLUDED
 
+/// Windows XP does not support CancelIoEx and thus cannot thread-safely cancel io requests
+#if !CPPCORO_OS_WINNT || CPPCORO_OS_WINNT >= 0x0600
 #include <atomic>
 #include <cstdint>
 #include <memory>
@@ -112,5 +114,5 @@ namespace cppcoro
 
 	};
 }
-
+#endif
 #endif

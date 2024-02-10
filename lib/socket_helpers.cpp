@@ -3,16 +3,22 @@
 // Licenced under MIT license. See LICENSE.txt for details.
 ///////////////////////////////////////////////////////////////////////////////
 
+
+#include <cppcoro/config.hpp>
 #include "socket_helpers.hpp"
 #include <functional>
 #include <cppcoro/net/ip_endpoint.hpp>
 
+#include <functional>
 #include <cstring>
 #include <cassert>
+
 #if CPPCORO_OS_WINNT
+# ifndef WIN32_LEAN_AND_MEAN
+#  define WIN32_LEAN_AND_MEAN
+# endif
 # include <winsock2.h>
 # include <ws2tcpip.h>
-# include <mswsock.h>
 # include <windows.h>
 #elif CPPCORO_OS_LINUX
 # include <sys/socket.h>
@@ -29,7 +35,7 @@ cppcoro::net::detail::sockaddr_to_ip_endpoint(const sockaddr& address) noexcept
 {
 	if (address.sa_family == AF_INET)
 	{
-		SOCKADDR_IN ipv4Address;
+		SOCKADDR_IN ipv4Address = {0};
 		std::memcpy(&ipv4Address, &address, sizeof(ipv4Address));
 
 		std::uint8_t addressBytes[4];
@@ -44,7 +50,7 @@ cppcoro::net::detail::sockaddr_to_ip_endpoint(const sockaddr& address) noexcept
 	{
 		assert(address.sa_family == AF_INET6);
 
-		SOCKADDR_IN6 ipv6Address;
+		SOCKADDR_IN6 ipv6Address = {0};
 		std::memcpy(&ipv6Address, &address, sizeof(ipv6Address));
 
 		return ipv6_endpoint{
@@ -62,7 +68,7 @@ int cppcoro::net::detail::ip_endpoint_to_sockaddr(
 	{
 		const auto& ipv4EndPoint = endPoint.to_ipv4();
 
-		SOCKADDR_IN ipv4Address;
+		SOCKADDR_IN ipv4Address = {0};
 		ipv4Address.sin_family = AF_INET;
 		std::memcpy(&ipv4Address.sin_addr, ipv4EndPoint.address().bytes(), 4);
 		ipv4Address.sin_port = htons(ipv4EndPoint.port());
@@ -76,7 +82,7 @@ int cppcoro::net::detail::ip_endpoint_to_sockaddr(
 	{
 		const auto& ipv6EndPoint = endPoint.to_ipv6();
 
-		SOCKADDR_IN6 ipv6Address {0};
+		SOCKADDR_IN6 ipv6Address = {0};
 		ipv6Address.sin6_family = AF_INET6;
 		std::memcpy(&ipv6Address.sin6_addr, ipv6EndPoint.address().bytes(), 16);
 		ipv6Address.sin6_port = htons(ipv6EndPoint.port());

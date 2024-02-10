@@ -5,20 +5,24 @@
 
 #include <cppcoro/net/socket_disconnect_operation.hpp>
 #include <cppcoro/net/socket.hpp>
+#include <cppcoro/io_service.hpp>
 
 #include "socket_helpers.hpp"
 
 #include <system_error>
 
 #if CPPCORO_OS_WINNT
+# ifndef WIN32_LEAN_AND_MEAN
+#  define WIN32_LEAN_AND_MEAN
+# endif
 # include <winsock2.h>
-# include <ws2tcpip.h>
 # include <mswsock.h>
 # include <windows.h>
 
 bool cppcoro::net::socket_disconnect_operation_impl::try_start(
-	cppcoro::detail::win32_overlapped_operation_base& operation) noexcept
+	cppcoro::detail::async_operation_base& operation) noexcept
 {
+	operation.m_handle = reinterpret_cast<HANDLE>(m_socket.native_handle());
 	// Lookup the address of the DisconnectEx function pointer for this socket.
 	LPFN_DISCONNECTEX disconnectExPtr;
 	{
@@ -41,12 +45,6 @@ bool cppcoro::net::socket_disconnect_operation_impl::try_start(
 		}
 	}
 
-	// Need to read this flag before starting the operation, otherwise
-	// it may be possible that the operation will complete immediately
-	// on another thread and then destroy the socket before we get a
-	// chance to read it.
-	const bool skipCompletionOnSuccess = m_socket.skip_completion_on_success();
-
 	// Need to add TF_REUSE_SOCKET to these flags if we want to allow reusing
 	// a socket for subsequent connections once the disconnect operation
 	// completes.
@@ -67,27 +65,28 @@ bool cppcoro::net::socket_disconnect_operation_impl::try_start(
 			return false;
 		}
 	}
-	else if (skipCompletionOnSuccess)
-	{
-		// Successfully completed synchronously and no completion event
-		// will be posted to an I/O thread so we can return without suspending.
-		operation.m_errorCode = ERROR_SUCCESS;
-		return false;
-	}
+	operation.m_completeFunc = [&]() {
+		cppcoro::detail::win32::dword_t numberOfBytesTransferred = 0;
+		cppcoro::detail::win32::dword_t flags = 0;
+		cppcoro::detail::win32::bool_t ok = WSAGetOverlappedResult(
+			m_socket.native_handle(),
+			operation.get_overlapped(),
+			&numberOfBytesTransferred,
+			0,
+			&flags
+		);
+		if (ok) {
+			return std::make_tuple(static_cast<cppcoro::detail::win32::dword_t>(ERROR_SUCCESS), numberOfBytesTransferred);
+		} else {
+			return std::make_tuple(static_cast<cppcoro::detail::win32::dword_t>(WSAGetLastError()), numberOfBytesTransferred);
+		}
+	};
 
 	return true;
 }
 
-void cppcoro::net::socket_disconnect_operation_impl::cancel(
-	cppcoro::detail::win32_overlapped_operation_base& operation) noexcept
-{
-	(void)::CancelIoEx(
-		reinterpret_cast<HANDLE>(m_socket.native_handle()),
-		operation.get_overlapped());
-}
-
 void cppcoro::net::socket_disconnect_operation_impl::get_result(
-	cppcoro::detail::win32_overlapped_operation_base& operation)
+	cppcoro::detail::async_operation_base& operation)
 {
 	if (operation.m_errorCode != ERROR_SUCCESS)
 	{
@@ -110,29 +109,22 @@ void cppcoro::net::socket_disconnect_operation_impl::get_result(
 # include <netinet/udp.h>
 
 bool cppcoro::net::socket_disconnect_operation_impl::try_start(
-	cppcoro::detail::linux_async_operation_base& operation) noexcept
+	cppcoro::detail::async_operation_base& operation) noexcept
 {
-	operation.m_completeFunc = [=]() {
-		operation.m_mq->remove_fd_watch(m_socket.native_handle());
-		int res = m_socket.close();
-		return res;
+	operation.m_fd = m_socket.native_handle();
+	operation.m_completeFunc = [&]() {
+		return m_socket.close();
 	};
-	operation.m_mq->add_fd_watch(m_socket.native_handle(), reinterpret_cast<void*>(&operation), EPOLLOUT);
+	operation.m_ioService->get_io_context().watch_handle(m_socket.native_handle(), reinterpret_cast<void*>(&operation), cppcoro::detail::watch_type::writable);
 	return true;
 }
 
-void cppcoro::net::socket_disconnect_operation_impl::cancel(
-	cppcoro::detail::linux_async_operation_base& operation) noexcept
-{
-	operation.m_mq->remove_fd_watch(m_socket.native_handle());
-}
-
 void cppcoro::net::socket_disconnect_operation_impl::get_result(
-	cppcoro::detail::linux_async_operation_base& operation)
+	cppcoro::detail::async_operation_base& operation)
 {
 	if (operation.m_res < 0)
 	{
-		if (operation.m_res == -cppcoro::detail::error_operation_cancelled)
+		if (operation.m_res == -ECANCELED)
 		{
 			throw operation_cancelled{};
 		}

@@ -2,63 +2,48 @@
 // Copyright (c) Lewis Baker
 // Licenced under MIT license. See LICENSE.txt for details.
 ///////////////////////////////////////////////////////////////////////////////
-#ifndef CPPCORO_DETAIL_LINUX_ASYNC_OPERATION_HPP_INCLUDED
-#define CPPCORO_DETAIL_LINUX_ASYNC_OPERATION_HPP_INCLUDED
+#ifndef CPPCORO_DETAIL_ASYNC_OPERATION_HPP_INCLUDED
+#define CPPCORO_DETAIL_ASYNC_OPERATION_HPP_INCLUDED
 
+#include <cppcoro/coroutine.hpp>
 #include <cppcoro/cancellation_registration.hpp>
 #include <cppcoro/cancellation_token.hpp>
 #include <cppcoro/operation_cancelled.hpp>
-
-#include <cppcoro/detail/linux.hpp>
+#include <cppcoro/detail/platform.hpp>
 
 #include <optional>
-#include <system_error>
-#include <cppcoro/coroutine.hpp>
 #include <cassert>
 
 namespace cppcoro
 {
 	namespace detail
 	{
-		class linux_async_operation_base
-			: protected detail::linux::io_state
+		class async_operation_base
+			: public io_state
 		{
 		public:
 
-			linux_async_operation_base(
-				detail::linux::io_state::callback_type* callback,
-				detail::linux::message_queue* mq) noexcept
-				: detail::linux::io_state(callback)
-				, m_mq(mq)
+			using callback_type = void(async_operation_base* state);
+			async_operation_base(
+				callback_type* callback,
+				io_service* ioService) noexcept
+				: io_state(ioService)
+				, m_callback(callback)
 			{}
 
-			std::size_t get_result()
-			{
-				if (m_res < 0)
-				{
-					throw std::system_error{
-						-m_res,
-						std::system_category()
-					};
-				}
-
-				return m_res;
-			}
-
-			std::int32_t m_res;
-			std::function<int()> m_completeFunc;
- 			detail::linux::message_queue* m_mq;
+			callback_type* m_callback;
+			cppcoro::coroutine_handle<> m_awaitingCoroutine;
 		};
 
 		template<typename OPERATION>
-		class linux_async_operation
-			: protected linux_async_operation_base
+		class async_operation
+			: protected async_operation_base
 		{
 		protected:
 
-			linux_async_operation(detail::linux::message_queue* mq) noexcept
-				: linux_async_operation_base(
-					&linux_async_operation::on_operation_completed, mq)
+			async_operation(io_service* ioService) noexcept
+				: async_operation_base(
+					&async_operation::on_operation_completed, ioService)
 			{}
 
 		public:
@@ -68,7 +53,7 @@ namespace cppcoro
 			CPPCORO_NOINLINE
 			bool await_suspend(cppcoro::coroutine_handle<> awaitingCoroutine)
 			{
-				static_assert(std::is_base_of_v<linux_async_operation, OPERATION>);
+				static_assert(std::is_base_of_v<async_operation, OPERATION>);
 
 				m_awaitingCoroutine = awaitingCoroutine;
 				return static_cast<OPERATION*>(this)->try_start();
@@ -81,48 +66,31 @@ namespace cppcoro
 
 		private:
 
-			static void on_operation_completed(
-				detail::linux::io_state* ioState) noexcept
+			static void on_operation_completed(async_operation_base* base_operation) noexcept
 			{
-				auto* operation = static_cast<linux_async_operation*>(ioState);
-				operation->m_res = operation->m_completeFunc();
-				if (operation->m_res < 0) {
-					operation->m_res = -errno;
-				}
+				auto* operation = static_cast<async_operation*>(base_operation);
+				operation->on_operation_completed_base();
 				operation->m_awaitingCoroutine.resume();
 			}
 
-			cppcoro::coroutine_handle<> m_awaitingCoroutine;
-
 		};
 
-		static constexpr int error_operation_cancelled = ECANCELED;
 		template<typename OPERATION>
-		class linux_async_operation_cancellable
-			: protected linux_async_operation_base
+		class async_operation_cancellable
+			: protected async_operation_base
 		{
 
 		protected:
 
-			linux_async_operation_cancellable(
-				detail::linux::message_queue* mq,
+			async_operation_cancellable(
+				io_service* ioService,
 				cancellation_token&& ct) noexcept
-				: linux_async_operation_base(
-					  &linux_async_operation_cancellable::on_operation_completed, mq)
+				: async_operation_base(
+					  &async_operation_cancellable::on_operation_completed, ioService)
 				, m_state(ct.is_cancellation_requested() ? state::completed : state::not_started)
 				, m_cancellationToken(std::move(ct))
-			{
-				m_res = -error_operation_cancelled;
-			}
-
-			linux_async_operation_cancellable(
-				linux_async_operation_cancellable&& other) noexcept
-				: linux_async_operation_base(std::move(other))
-				, m_state(other.m_state.load(std::memory_order_relaxed))
-				, m_cancellationToken(std::move(other.m_cancellationToken))
-			{
-				assert(m_res == other.m_res);
-			}
+				, m_isCancelled(false)
+			{}
 
 		public:
 
@@ -134,7 +102,7 @@ namespace cppcoro
 			CPPCORO_NOINLINE
 			bool await_suspend(cppcoro::coroutine_handle<> awaitingCoroutine)
 			{
-				static_assert(std::is_base_of_v<linux_async_operation_cancellable, OPERATION>);
+				static_assert(std::is_base_of_v<async_operation_cancellable, OPERATION>);
 
 				m_awaitingCoroutine = awaitingCoroutine;
 
@@ -193,13 +161,16 @@ namespace cppcoro
 							// Note that it may have already completed on a background
 							// thread by now so this request for cancellation may end up
 							// being ignored.
-							static_cast<OPERATION*>(this)->cancel();
-
-							if (!m_state.compare_exchange_strong(
+							if (m_state.compare_exchange_strong(
 								oldState,
 								state::started,
 								std::memory_order_release,
 								std::memory_order_acquire))
+							{
+								m_isCancelled.store(true, std::memory_order_relaxed);
+								static_cast<OPERATION*>(this)->cancel();
+							}
+							else
 							{
 								assert(oldState == state::completed);
 								return false;
@@ -224,7 +195,7 @@ namespace cppcoro
 				// may not be destructed until all of the operations complete.
 				m_cancellationCallback.reset();
 
-				if (m_res == -error_operation_cancelled)
+				if (m_isCancelled.load(std::memory_order_acquire))
 				{
 					throw operation_cancelled{};
 				}
@@ -270,19 +241,15 @@ namespace cppcoro
 				if (oldState != state::completed)
 				{
 					static_cast<OPERATION*>(this)->cancel();
+					m_isCancelled.store(true, std::memory_order_relaxed);
 				}
-				m_mq->enqueue_message(reinterpret_cast<void*>(m_awaitingCoroutine.address()),
-					detail::linux::RESUME_TYPE);
 			}
 
-			static void on_operation_completed(
-				detail::linux::io_state* ioState) noexcept
+			static void on_operation_completed(async_operation_base* base_operation) noexcept
 			{
-				auto* operation = static_cast<linux_async_operation_cancellable*>(ioState);
-
-				operation->m_res = operation->m_completeFunc();
-				if (operation->m_res < 0) {
-					operation->m_res = -errno;
+				auto* operation = static_cast<async_operation_cancellable*>(base_operation);
+				if (!operation->m_isCancelled.load(std::memory_order_acquire)) {
+					operation->on_operation_completed_base();
 				}
 
 				auto state = operation->m_state.load(std::memory_order_acquire);
@@ -314,10 +281,9 @@ namespace cppcoro
 			std::atomic<state> m_state;
 			cppcoro::cancellation_token m_cancellationToken;
 			std::optional<cppcoro::cancellation_registration> m_cancellationCallback;
-			cppcoro::coroutine_handle<> m_awaitingCoroutine;
+			std::atomic<bool> m_isCancelled;
 
 		};
 	}
 }
-
 #endif

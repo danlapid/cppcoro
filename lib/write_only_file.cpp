@@ -10,6 +10,9 @@
 #  define WIN32_LEAN_AND_MEAN
 # endif
 # include <windows.h>
+#elif CPPCORO_OS_LINUX
+#include <fcntl.h>
+#endif
 
 cppcoro::write_only_file cppcoro::write_only_file::open(
 	io_service& ioService,
@@ -19,33 +22,11 @@ cppcoro::write_only_file cppcoro::write_only_file::open(
 	file_buffering_mode bufferingMode)
 {
 	return write_only_file(file::open(
+#if CPPCORO_OS_WINNT
 		GENERIC_WRITE,
-		ioService,
-		path,
-		openMode,
-		shareMode,
-		bufferingMode));
-}
-
-cppcoro::write_only_file::write_only_file(
-	detail::win32::safe_handle&& fileHandle) noexcept
-	: file(std::move(fileHandle))
-	, writable_file(detail::win32::safe_handle{})
-{
-}
-
 #elif CPPCORO_OS_LINUX
-#include <fcntl.h>
-
-cppcoro::write_only_file cppcoro::write_only_file::open(
-	io_service& ioService,
-	const std::filesystem::path& path,
-	file_open_mode openMode,
-	file_share_mode shareMode,
-	file_buffering_mode bufferingMode)
-{
-	return write_only_file(file::open(
 		O_WRONLY,
+#endif
 		ioService,
 		path,
 		openMode,
@@ -53,10 +34,8 @@ cppcoro::write_only_file cppcoro::write_only_file::open(
 		bufferingMode));
 }
 
-cppcoro::write_only_file::write_only_file(
-	detail::linux::safe_file_data&& fileData) noexcept
-	: file(std::move(fileData))
-	, writable_file(detail::linux::safe_file_data{})
+cppcoro::write_only_file::write_only_file(file&& other) noexcept
+	: file(std::move(other))
+	, writable_file(detail::safe_file_handle_t{}, NULL)
 {
 }
-#endif

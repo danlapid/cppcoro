@@ -87,7 +87,7 @@ TEST_CASE_FIXTURE(io_service_fixture, "schedule_on async_generator<> function")
 		auto seq = schedule_on(io_service(), makeSequence());
 
 		int expected = 1;
-		for (auto iter = co_await seq.begin(); iter != seq.end(); co_await ++iter)
+		for (auto iter = co_await seq.begin(); iter != seq.end();)
 		{
 			int value = *iter;
 			CHECK(value == expected++);
@@ -96,6 +96,7 @@ TEST_CASE_FIXTURE(io_service_fixture, "schedule_on async_generator<> function")
 			// awaiting next item in the loop to chck that
 			// the generator is resumed on io_service() thread.
 			co_await otherIoService.schedule();
+			co_await ++iter;
 		}
 
 		otherIoService.stop();
@@ -178,7 +179,7 @@ TEST_CASE_FIXTURE(io_service_fixture, "resume_on async_generator<> function"
 		auto seq = resume_on(otherIoService, makeSequence());
 
 		int expected = 1;
-		for (auto iter = co_await seq.begin(); iter != seq.end(); co_await ++iter)
+		for (auto iter = co_await seq.begin(); iter != seq.end();)
 		{
 			int value = *iter;
 			// Every time we receive a value it should be on our requested
@@ -192,6 +193,7 @@ TEST_CASE_FIXTURE(io_service_fixture, "resume_on async_generator<> function"
 			{
 				co_await io_service().schedule();
 			}
+			co_await ++iter;
 		}
 
 		otherIoService.stop();

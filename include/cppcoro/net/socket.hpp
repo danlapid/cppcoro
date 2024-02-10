@@ -18,11 +18,7 @@
 
 #include <cppcoro/cancellation_token.hpp>
 
-#if CPPCORO_OS_WINNT
-# include <cppcoro/detail/win32.hpp>
-#elif CPPCORO_OS_LINUX
-# include <cppcoro/detail/linux.hpp>
-#endif
+#include <cppcoro/detail/platform.hpp>
 
 namespace cppcoro
 {
@@ -82,38 +78,8 @@ namespace cppcoro
 			/// If the socket could not be created for some reason.
 			static socket create_udpv6(io_service& ioSvc);
 
-			socket(socket&& other) noexcept;
-			socket& operator=(socket&& other) noexcept;
-			socket(const socket& other) noexcept;
-			socket& operator=(const socket& other) noexcept;
-
-			/// Closes the socket, releasing any associated resources.
-			///
-			/// If the socket still has an open connection then the connection will be
-			/// reset. The destructor will not block waiting for queueud data to be sent.
-			/// If you need to ensure that queued data is delivered then you must call
-			/// disconnect() and wait until the disconnect operation completes.
-			~socket();
-
-			int close();
-
-
-#if CPPCORO_OS_WINNT
-			/// Get the Win32 socket handle assocaited with this socket.
-			cppcoro::detail::win32::socket_t native_handle() noexcept { return m_handle; }
-
-			/// Query whether I/O operations that complete synchronously will skip posting
-			/// an I/O completion event to the I/O completion port.
-			///
-			/// The operation class implementations can use this to determine whether or not
-			/// it should immediately resume the coroutine on the current thread upon an
-			/// operation completing synchronously or whether it should suspend the coroutine
-			/// and wait until the I/O completion event is dispatched to an I/O thread.
-			bool skip_completion_on_success() noexcept { return m_skipCompletionOnSuccess; }
-#elif CPPCORO_OS_LINUX
-			/// Get the linux fd assocaited with this socket.
-			cppcoro::detail::linux::fd_t native_handle() noexcept { return m_handle; }
-#endif
+			/// Get the underlyiend socket handle assocaited with this socket.
+			cppcoro::detail::socket_handle_t native_handle() noexcept { return m_handle; }
 
 			/// Get the address and port of the local end-point.
 			///
@@ -252,27 +218,31 @@ namespace cppcoro
 			void close_recv();
 
 
-#if CPPCORO_OS_WINNT
+			/// Closes the socket, releasing any associated resources.
+			///
+			/// If the socket still has an open connection then the connection will be
+			/// reset. The destructor will not block waiting for queueud data to be sent.
+			/// If you need to ensure that queued data is delivered then you must call
+			/// disconnect() and wait until the disconnect operation completes.
+			~socket();
+
+			int close();
+
+			socket(socket&& other) noexcept;
+			socket& operator=(socket&& other) noexcept;
+			socket(const socket& other) noexcept;
+			socket& operator=(const socket& other) noexcept;
+
 			explicit socket(
-				cppcoro::detail::win32::socket_t handle,
-				bool skipCompletionOnSuccess) noexcept;
-#elif CPPCORO_OS_LINUX
-			explicit socket(
-				cppcoro::detail::linux::fd_t handle,
-				cppcoro::detail::linux::message_queue* mq) noexcept;
-#endif
+				cppcoro::detail::socket_handle_t handle,
+				cppcoro::io_service* ioService) noexcept;
 		private:
 
 			friend class socket_accept_operation_impl;
 			friend class socket_connect_operation_impl;
 
-#if CPPCORO_OS_WINNT
-			cppcoro::detail::win32::socket_t m_handle;
-			bool m_skipCompletionOnSuccess;
-#elif CPPCORO_OS_LINUX
-			cppcoro::detail::linux::fd_t m_handle;
-			cppcoro::detail::linux::message_queue* m_mq;
-#endif
+			cppcoro::detail::socket_handle_t m_handle;
+			cppcoro::io_service* m_ioService;
 
 			ip_endpoint m_localEndPoint;
 			ip_endpoint m_remoteEndPoint;

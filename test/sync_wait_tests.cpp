@@ -51,6 +51,7 @@ TEST_CASE("sync_wait(shared_task<T>)")
 	CHECK(cppcoro::sync_wait(makeTask()) == "foo");
 }
 
+#if !CPPCORO_OS_WINNT || CPPCORO_OS_WINNT >= 0x0600
 TEST_CASE("multiple threads")
 {
 	// We are creating a new task and starting it inside the sync_wait().
@@ -72,5 +73,6 @@ TEST_CASE("multiple threads")
 		CHECK(cppcoro::sync_wait(createLazyTask()) == i);
 	}
 }
+#endif
 
 TEST_SUITE_END();

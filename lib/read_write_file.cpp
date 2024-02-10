@@ -10,6 +10,9 @@
 #  define WIN32_LEAN_AND_MEAN
 # endif
 # include <windows.h>
+#elif CPPCORO_OS_LINUX
+#include <fcntl.h>
+#endif
 
 cppcoro::read_write_file cppcoro::read_write_file::open(
 	io_service& ioService,
@@ -19,34 +22,11 @@ cppcoro::read_write_file cppcoro::read_write_file::open(
 	file_buffering_mode bufferingMode)
 {
 	return read_write_file(file::open(
+#if CPPCORO_OS_WINNT
 		GENERIC_READ | GENERIC_WRITE,
-		ioService,
-		path,
-		openMode,
-		shareMode,
-		bufferingMode));
-}
-
-cppcoro::read_write_file::read_write_file(
-	detail::win32::safe_handle&& fileHandle) noexcept
-	: file(std::move(fileHandle))
-	, readable_file(detail::win32::safe_handle{})
-	, writable_file(detail::win32::safe_handle{})
-{
-}
-
 #elif CPPCORO_OS_LINUX
-#include <fcntl.h>
-
-cppcoro::read_write_file cppcoro::read_write_file::open(
-	io_service& ioService,
-	const std::filesystem::path& path,
-	file_open_mode openMode,
-	file_share_mode shareMode,
-	file_buffering_mode bufferingMode)
-{
-	return read_write_file(file::open(
 		O_RDWR,
+#endif
 		ioService,
 		path,
 		openMode,
@@ -54,11 +34,9 @@ cppcoro::read_write_file cppcoro::read_write_file::open(
 		bufferingMode));
 }
 
-cppcoro::read_write_file::read_write_file(
-	detail::linux::safe_file_data&& fileData) noexcept
-	: file(std::move(fileData))
-	, readable_file(detail::linux::safe_file_data{})
-	, writable_file(detail::linux::safe_file_data{})
+cppcoro::read_write_file::read_write_file(file&& other) noexcept
+	: file(std::move(other))
+	, readable_file(detail::safe_file_handle_t{}, NULL)
+	, writable_file(detail::safe_file_handle_t{}, NULL)
 {
 }
-#endif

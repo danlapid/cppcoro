@@ -12,113 +12,32 @@
 #include <atomic>
 #include <optional>
 
-#if CPPCORO_OS_WINNT
-# include <cppcoro/detail/win32.hpp>
-# include <cppcoro/detail/win32_overlapped_operation.hpp>
-#elif CPPCORO_OS_LINUX
-# include <cppcoro/detail/linux.hpp>
-# include <cppcoro/detail/linux_async_operation.hpp>
-#endif
+#include <cppcoro/detail/platform.hpp>
+#include <cppcoro/detail/async_operation.hpp>
 
 namespace cppcoro
 {
-#if CPPCORO_OS_WINNT
-	class file_read_operation_impl
-	{
-	public:
-
-		file_read_operation_impl(
-			detail::win32::handle_t fileHandle,
-			void* buffer,
-			std::size_t byteCount) noexcept
-			: m_fileHandle(fileHandle)
-			, m_buffer(buffer)
-			, m_byteCount(byteCount)
-		{}
-
-		bool try_start(cppcoro::detail::win32_overlapped_operation_base& operation) noexcept;
-		void cancel(cppcoro::detail::win32_overlapped_operation_base& operation) noexcept;
-
-	private:
-
-		detail::win32::handle_t m_fileHandle;
-		void* m_buffer;
-		std::size_t m_byteCount;
-
-	};
-
-	class file_read_operation
-		: public cppcoro::detail::win32_overlapped_operation<file_read_operation>
-	{
-	public:
-
-		file_read_operation(
-			detail::win32::handle_t fileHandle,
-			std::uint64_t fileOffset,
-			void* buffer,
-			std::size_t byteCount) noexcept
-			: cppcoro::detail::win32_overlapped_operation<file_read_operation>(fileOffset)
-			, m_impl(fileHandle, buffer, byteCount)
-		{}
-
-	private:
-
-		friend class cppcoro::detail::win32_overlapped_operation<file_read_operation>;
-
-		bool try_start() noexcept { return m_impl.try_start(*this); }
-
-		file_read_operation_impl m_impl;
-
-	};
-
-	class file_read_operation_cancellable
-		: public cppcoro::detail::win32_overlapped_operation_cancellable<file_read_operation_cancellable>
-	{
-	public:
-
-		file_read_operation_cancellable(
-			detail::win32::handle_t fileHandle,
-			std::uint64_t fileOffset,
-			void* buffer,
-			std::size_t byteCount,
-			cancellation_token&& cancellationToken) noexcept
-			: cppcoro::detail::win32_overlapped_operation_cancellable<file_read_operation_cancellable>(
-				fileOffset, std::move(cancellationToken))
-			, m_impl(fileHandle, buffer, byteCount)
-		{}
-
-	private:
-
-		friend class cppcoro::detail::win32_overlapped_operation_cancellable<file_read_operation_cancellable>;
-
-		bool try_start() noexcept { return m_impl.try_start(*this); }
-		void cancel() noexcept { m_impl.cancel(*this); }
-
-		file_read_operation_impl m_impl;
-
-	};
-#elif CPPCORO_OS_LINUX
  	class file_read_operation_impl
  	{
  	public:
 
  		file_read_operation_impl(
- 			int fd,
+ 			detail::file_handle_t fileHandle,
  			std::uint64_t fileOffset,
  			void* buffer,
  			std::size_t byteCount) noexcept
- 			: m_fd(fd)
+ 			: m_fileHandle(fileHandle)
  			, m_offset(fileOffset)
  			, m_buffer(buffer)
  			, m_byteCount(byteCount)
  		{}
 
- 		bool try_start(cppcoro::detail::linux_async_operation_base& operation) noexcept;
- 		void cancel(cppcoro::detail::linux_async_operation_base& operation) noexcept;
+ 		bool try_start(cppcoro::detail::async_operation_base& operation) noexcept;
+ 		void cancel(cppcoro::detail::async_operation_base& operation) noexcept;
 
  	private:
 
- 		int m_fd;
+ 		detail::file_handle_t m_fileHandle;
  		std::uint64_t m_offset;
  		void* m_buffer;
  		std::size_t m_byteCount;
@@ -126,23 +45,23 @@ namespace cppcoro
  	};
 
  	class file_read_operation
- 		: public cppcoro::detail::linux_async_operation<file_read_operation>
+ 		: public cppcoro::detail::async_operation<file_read_operation>
  	{
  	public:
 
  		file_read_operation(
- 			int fd,
-			detail::linux::message_queue* mq,
+ 			detail::file_handle_t fileHandle,
  			std::uint64_t fileOffset,
  			void* buffer,
- 			std::size_t byteCount) noexcept
- 			: cppcoro::detail::linux_async_operation<file_read_operation>(mq)
- 			, m_impl(fd, fileOffset, buffer, byteCount)
+ 			std::size_t byteCount,
+			io_service* ioService) noexcept
+ 			: cppcoro::detail::async_operation<file_read_operation>(ioService)
+ 			, m_impl(fileHandle, fileOffset, buffer, byteCount)
  		{}
 
  	private:
 
- 		friend class cppcoro::detail::linux_async_operation<file_read_operation>;
+ 		friend class cppcoro::detail::async_operation<file_read_operation>;
 
  		bool try_start() noexcept { return m_impl.try_start(*this); }
 
@@ -151,33 +70,31 @@ namespace cppcoro
  	};
 
  	class file_read_operation_cancellable
- 		: public cppcoro::detail::linux_async_operation_cancellable<file_read_operation_cancellable>
+ 		: public cppcoro::detail::async_operation_cancellable<file_read_operation_cancellable>
  	{
  	public:
 
  		file_read_operation_cancellable(
- 			int fd,
-			detail::linux::message_queue* mq,
+ 			detail::file_handle_t fileHandle,
  			std::uint64_t fileOffset,
  			void* buffer,
  			std::size_t byteCount,
+			io_service* ioService,
  			cancellation_token&& ct) noexcept
- 			: cppcoro::detail::linux_async_operation_cancellable<file_read_operation_cancellable>(
- 				mq, std::move(ct))
- 			, m_impl(fd, fileOffset, buffer, byteCount)
+ 			: cppcoro::detail::async_operation_cancellable<file_read_operation_cancellable>(
+ 				ioService, std::move(ct))
+ 			, m_impl(fileHandle, fileOffset, buffer, byteCount)
  		{}
 
  	private:
 
- 		friend class cppcoro::detail::linux_async_operation_cancellable<file_read_operation_cancellable>;
+ 		friend class cppcoro::detail::async_operation_cancellable<file_read_operation_cancellable>;
 
  		bool try_start() noexcept { return m_impl.try_start(*this); }
- 		void cancel() noexcept { m_impl.cancel(*this); }
 
  		file_read_operation_impl m_impl;
 
  	};
-#endif
 }
 
 #endif
