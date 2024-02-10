@@ -6,9 +6,9 @@
 #include <cppcoro/net/socket_send_to_operation.hpp>
 #include <cppcoro/net/socket.hpp>
 
-#if CPPCORO_OS_WINNT
-# include "socket_helpers.hpp"
+#include "socket_helpers.hpp"
 
+#if CPPCORO_OS_WINNT
 # include <winsock2.h>
 # include <ws2tcpip.h>
 # include <mswsock.h>
@@ -69,4 +69,34 @@ void cppcoro::net::socket_send_to_operation_impl::cancel(
 		operation.get_overlapped());
 }
 
+#elif CPPCORO_OS_LINUX
+# include <sys/socket.h>
+# include <netinet/in.h>
+# include <netinet/tcp.h>
+# include <netinet/udp.h>
+
+bool cppcoro::net::socket_send_to_operation_impl::try_start(
+	cppcoro::detail::linux_async_operation_base& operation) noexcept
+{
+	sockaddr_storage destinationAddress = {0};
+	const socklen_t destinationLength = detail::ip_endpoint_to_sockaddr(
+		m_destination, std::ref(destinationAddress));
+	operation.m_completeFunc = [=]() {
+		int res = sendto(
+			m_socket.native_handle(), m_buffer, m_byteCount, 0,
+			reinterpret_cast<const sockaddr*>(&destinationAddress),
+			destinationLength
+		);
+		operation.m_mq->remove_fd_watch(m_socket.native_handle());
+		return res;
+	};
+	operation.m_mq->add_fd_watch(m_socket.native_handle(), reinterpret_cast<void*>(&operation), EPOLLOUT);
+	return true;
+}
+
+void cppcoro::net::socket_send_to_operation_impl::cancel(
+	cppcoro::detail::linux_async_operation_base& operation) noexcept
+{
+	operation.m_mq->remove_fd_watch(m_socket.native_handle());
+}
 #endif

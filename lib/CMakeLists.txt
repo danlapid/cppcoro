@@ -164,6 +164,19 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "Linux")
     list(TRANSFORM linuxDetailIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/detail/")
     list(APPEND detailIncludes ${linuxDetailIncludes})
 
+    set(linuxNetIncludes
+        socket.hpp
+        socket_accept_operation.hpp
+        socket_connect_operation.hpp
+        socket_disconnect_operation.hpp
+        socket_recv_operation.hpp
+        socket_recv_from_operation.hpp
+        socket_send_operation.hpp
+        socket_send_to_operation.hpp
+    )
+    list(TRANSFORM linuxNetIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/net/")
+    list(APPEND netIncludes ${linuxNetIncludes})
+
     set(linuxSources
         linux.cpp
         io_service.cpp
@@ -175,15 +188,15 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "Linux")
         read_write_file.cpp
         file_read_operation.cpp
         file_write_operation.cpp
-        # socket_helpers.cpp
-        # socket.cpp
-        # socket_accept_operation.cpp
-        # socket_connect_operation.cpp
-        # socket_disconnect_operation.cpp
-        # socket_send_operation.cpp
-        # socket_send_to_operation.cpp
-        # socket_recv_operation.cpp
-        # socket_recv_from_operation.cpp
+        socket_helpers.cpp
+        socket.cpp
+        socket_accept_operation.cpp
+        socket_connect_operation.cpp
+        socket_disconnect_operation.cpp
+        socket_send_operation.cpp
+        socket_send_to_operation.cpp
+        socket_recv_operation.cpp
+        socket_recv_from_operation.cpp
     )
     list(APPEND sources ${linuxSources})
 endif()
