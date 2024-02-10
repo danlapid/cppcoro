@@ -1,16 +1,19 @@
 # Maintained fork of cppcoro
 
-The repository [andreasbuhr/cppcoro](https://github.com/andreasbuhr/cppcoro)
-is a fork of the original [cppcoro library](https://github.com/lewissbaker/cppcoro)
+The repository [danlapid/cppcoro](https://github.com/danlapid/cppcoro)
+is a fork of [andreasbuhr/cppcoro](https://github.com/andreasbuhr/cppcoro)
+which is a fork of the original [cppcoro library](https://github.com/lewissbaker/cppcoro)
 library. The differences to the original cppcoro are:
 
 * Automatically including 'coroutine' or 'experimental/coroutine', depending on compiler.
 * Automatically using namespace 'std::' or 'std::experimental'.
 * CMake as build system instead of cake.
 * CI in Github actions instead of appveyor
+* Linux Support
+* MacOS Support
 
-andreasbuhr/cppcoro is currently tested with g++-10.2, g++-11.1, g++-12, g+-13, clang-10, clang-11, clang-12, clang-13, clang-14, clang-15, clang-16, MSVC-2017, MSVC-2019, and MSVC-2022.
-Current build status for master branch: [![Actions Status](https://github.com/andreasbuhr/cppcoro/workflows/CMake/badge.svg)](https://github.com/andreasbuhr/cppcoro/actions).
+andreasbuhr/cppcoro is currently tested with g++-10.2, g++-11.1, g++-12, g+-13, clang-10, clang-11, clang-12, clang-13, clang-14, clang-15, clang-16, MSVC-2017, MSVC-2019, and MSVC-2022, macos-12, macos-13.
+Current build status for master branch: [![Actions Status](https://github.com/danlapid/cppcoro/workflows/CMake/badge.svg)](https://github.com/danlapid/cppcoro/actions).
 
 Most of the changes are offered upstream:
 * For adding CMake support it is [add_cmake_support](https://github.com/andreasbuhr/cppcoro/tree/add_cmake_support).
